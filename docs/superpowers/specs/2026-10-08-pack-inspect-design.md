@@ -25,6 +25,9 @@ Purchasable one-time tools: Rotate/flip, Shake, Scale, Drop-test pebble, UV ligh
 Stethoscope. Once bought they are owned permanently and free to use.
 
 ## Repair tools (added at review)
+
+> Superseded in part by 2026-10-08-views-and-notes-design.md (views, notes, closing, outside repairs, once-only fine).
+
 Repairs let you rescue a rejectable package and ship it safely.
 - Duct tape: bottomless box (tape over the hole), torn tape, crushed corner (splint).
 - Sealant: leaking can, wet cardboard.
@@ -76,6 +79,9 @@ Rules:
 - Out of scope for v1: selling items, upgrades beyond the above.
 
 ### Opening and fines
+
+> Superseded in part by 2026-10-08-views-and-notes-design.md (views, notes, closing, outside repairs, once-only fine).
+
 - Repairing requires an explicit Open action on the package first.
 - Opening a box that does not need repair under today's rules incurs a fine, charged at
   settlement. A box needs repair only if it has at least one reject-worthy problem and

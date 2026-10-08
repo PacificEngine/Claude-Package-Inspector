@@ -4,7 +4,7 @@ import {
   LAST_DAY,
   isCorrectVerdict,
   isShippable,
-  needsRepair,
+  needsOpening,
   rejectWorthyProblems,
   ruleCardForDay,
   unresolvedProblems,
@@ -67,26 +67,39 @@ describe('shippability', () => {
   });
 });
 
-describe('needsRepair', () => {
-  it('is true when every rejectable problem is repairable', () => {
-    expect(needsRepair(makePackage({ defects: ['torn_tape'] }), day1)).toBe(true);
+describe('needsOpening', () => {
+  it('is true when a rejectable problem needs the box open and all are repairable', () => {
+    expect(needsOpening(makePackage({ defects: ['bottomless'] }), day5)).toBe(true);
+  });
+
+  it('is false when every rejectable problem can be fixed from outside', () => {
+    expect(needsOpening(makePackage({ defects: ['torn_tape'] }), day1)).toBe(false);
+    expect(needsOpening(makePackage({ defects: ['crushed_corner'] }), day2)).toBe(false);
+  });
+
+  it('is false for an address-only problem', () => {
+    const pkg = makePackage({ address: { ...goodAddress, zip: '' } });
+    expect(needsOpening(pkg, day1)).toBe(false);
+  });
+
+  it('is true when outside and inside problems are mixed', () => {
+    expect(needsOpening(makePackage({ kind: 'can', defects: ['leaking', 'bulging'] }), day1)).toBe(true);
   });
 
   it('is false for a clean package', () => {
-    expect(needsRepair(makePackage(), day1)).toBe(false);
+    expect(needsOpening(makePackage(), day1)).toBe(false);
   });
 
   it('is false when a rejectable problem cannot be repaired', () => {
-    expect(needsRepair(makePackage({ defects: ['future_contents'] }), day5)).toBe(false);
+    expect(needsOpening(makePackage({ defects: ['future_contents'] }), day5)).toBe(false);
   });
 
   it('is false when repairable and unrepairable problems are mixed', () => {
-    const pkg = makePackage({ defects: ['torn_tape', 'future_contents'] });
-    expect(needsRepair(pkg, day5)).toBe(false);
+    expect(needsOpening(makePackage({ defects: ['bottomless', 'future_contents'] }), day5)).toBe(false);
   });
 
   it('ignores allowed defects', () => {
-    expect(needsRepair(makePackage({ defects: ['crushed_corner'] }), day1)).toBe(false);
+    expect(needsOpening(makePackage({ defects: ['crushed_corner'] }), day1)).toBe(false);
   });
 });
 
@@ -94,8 +107,8 @@ describe('problems', () => {
   it('lists the repair tool for each problem', () => {
     const pkg = makePackage({ defects: ['torn_tape'], address: { ...goodAddress, zip: '' } });
     expect(rejectWorthyProblems(pkg, day1)).toEqual([
-      { source: 'defect', id: 'torn_tape', repairTool: 'tape' },
-      { source: 'address', id: 'missing_field', repairTool: 'relabel' },
+      { source: 'defect', id: 'torn_tape', repairTool: 'tape', requiresOpen: false },
+      { source: 'address', id: 'missing_field', repairTool: 'relabel', requiresOpen: false },
     ]);
   });
 

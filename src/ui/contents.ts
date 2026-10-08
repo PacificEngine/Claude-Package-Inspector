@@ -1,4 +1,4 @@
-import type { Package, PackageKind } from '../game/types';
+import type { DefectId, Package, PackageKind } from '../game/types';
 
 // 'dome' is a heap of something (fruit, jam), 'sticks' stand upright, 'cloth' is a folded bundle.
 export type ContentsArt = 'dome' | 'sticks' | 'cloth' | 'teapot' | 'duck' | 'tower' | 'book';
@@ -66,10 +66,11 @@ const EXTRA_TEXT: Record<ContentsExtra, string> = {
 };
 
 // Purely cosmetic: chosen from the package id so it is stable, never affects the rules.
-export function contentsFor(pkg: Package): Contents {
+export function contentsFor(pkg: Package, repaired: readonly DefectId[] = []): Contents {
   const items = CONTENT_ITEMS[pkg.kind];
   const extras: ContentsExtra[] = [];
   for (const defect of pkg.defects) {
+    if (repaired.includes(defect)) continue;
     const extra = EXTRA_FOR_DEFECT[defect];
     if (extra && !extras.includes(extra)) extras.push(extra);
   }

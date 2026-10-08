@@ -1,14 +1,9 @@
-import { revealedDefects } from '../game/inspection';
+import { viewOf } from '../game/handling';
+import { visibleDefects } from '../game/inspection';
 import type { DefectId, Handling, Package, PackageKind } from '../game/types';
 import type { PackageAction } from './animation';
 import { contentsFor, type Contents, type ContentsItem } from './contents';
-
-interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+import { bodyRect, insideLayout, type Rect } from './geometry';
 
 const BODY_COLOR: Record<PackageKind, string> = {
   box: '#c9a26b',
@@ -17,22 +12,6 @@ const BODY_COLOR: Record<PackageKind, string> = {
   jar: '#a8d0c7',
   tube: '#d99aa0',
 };
-
-function bodyRect(kind: PackageKind, w: number, h: number): Rect {
-  const floor = h - 40;
-  switch (kind) {
-    case 'box':
-      return { x: w / 2 - 80, y: floor - 130, w: 160, h: 130 };
-    case 'parcel':
-      return { x: w / 2 - 95, y: floor - 90, w: 190, h: 90 };
-    case 'can':
-      return { x: w / 2 - 50, y: floor - 120, w: 100, h: 120 };
-    case 'jar':
-      return { x: w / 2 - 55, y: floor - 110, w: 110, h: 110 };
-    case 'tube':
-      return { x: w / 2 - 35, y: floor - 150, w: 70, h: 150 };
-  }
-}
 
 const MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Rect) => void>> = {
   leaking: (ctx, b) => {
@@ -100,12 +79,12 @@ const MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Rect) =
   },
 };
 
-export interface View {
+export interface Motion {
   action: PackageAction | null;
   progress: number; // 0..1 through the action's animation
 }
 
-const REST: View = { action: null, progress: 1 };
+const REST: Motion = { action: null, progress: 1 };
 
 const flat = (kind: PackageKind): boolean => kind === 'box' || kind === 'parcel';
 const ease = (t: number): number => 1 - (1 - t) * (1 - t);
@@ -291,69 +270,50 @@ function drawExtraBehind(ctx: CanvasRenderingContext2D, extra: Contents['extras'
   }
 }
 
-function drawInside(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, contents: Contents, open: number): void {
-  const cx = b.x + b.w / 2;
-  const rim = b.y + 2;
-  const hasVoid = contents.extras.includes('void');
-  if (flat(pkg.kind)) {
-    // Flaps swing up and out behind the contents.
-    ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 0.9);
-    const lift = 40 * open;
-    ctx.beginPath();
-    ctx.moveTo(b.x, b.y);
-    ctx.lineTo(b.x + b.w * 0.46, b.y);
-    ctx.lineTo(b.x + b.w * 0.46 - 8 * open, b.y - lift);
-    ctx.lineTo(b.x - 16 * open, b.y - lift);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(b.x + b.w, b.y);
-    ctx.lineTo(b.x + b.w * 0.54, b.y);
-    ctx.lineTo(b.x + b.w * 0.54 + 8 * open, b.y - lift);
-    ctx.lineTo(b.x + b.w + 16 * open, b.y - lift);
-    ctx.fill();
-  }
-  ctx.save();
-  ctx.translate(0, (1 - open) * 40);
-  ctx.globalAlpha = open;
-  if (!hasVoid) drawItem(ctx, contents.item, cx, rim);
-  for (const extra of contents.extras) drawExtraBehind(ctx, extra, cx, rim);
-  ctx.restore();
-}
+// ---- front ----------------------------------------------------------------------
 
-function drawRim(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, contents: Contents, open: number): void {
-  const cx = b.x + b.w / 2;
-  // The dark inside of the opening, in front of the contents.
-  ctx.fillStyle = contents.extras.includes('void') ? '#000' : '#2b2118';
-  ctx.beginPath();
-  ctx.ellipse(cx, b.y + 4, b.w * 0.42, 9 * open + 1, 0, 0, Math.PI * 2);
-  ctx.fill();
-  if (contents.extras.includes('liquid')) {
-    ctx.fillStyle = '#3b82c4';
-    ctx.beginPath();
-    ctx.ellipse(cx, b.y + 6, b.w * 0.34, 5 * open + 0.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  if (!flat(pkg.kind)) {
-    // The lid lifts off and tilts away.
-    ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 0.85);
-    ctx.beginPath();
-    ctx.ellipse(cx + 34 * open, b.y - 10 - 26 * open, b.w * 0.5, 8, -0.35 * open, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-// ---- underside (rotate) --------------------------------------------------------
-
-function drawUnderside(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling: Handling): void {
-  ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 0.72);
+function drawFront(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling: Handling): void {
+  const visible = visibleDefects(pkg, handling, 'front');
+  ctx.fillStyle = BODY_COLOR[pkg.kind];
   bodyPath(ctx, pkg, b);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(b.x + 8, b.y + 8, b.w - 16, b.h - 16);
 
-  const bottomless = pkg.defects.includes('bottomless') && !handling.repaired.includes('bottomless');
-  if (bottomless) {
+  // Seal tape strip, drawn unless the tape is torn
+  if (flat(pkg.kind) && !visible.includes('torn_tape')) {
+    ctx.fillStyle = '#b08a52';
+    ctx.fillRect(b.x, b.y + 4, b.w, 8);
+  }
+
+  const label = { x: b.x + b.w * 0.2, y: b.y + b.h * 0.4, w: b.w * 0.6, h: b.h * 0.3 };
+  if (visible.includes('missing_label')) {
+    // An empty outline where the contents label should be, so the gap is something to point at.
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = 'rgba(60, 40, 20, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(label.x, label.y, label.w, label.h);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = '#fdfdf5';
+    ctx.fillRect(label.x, label.y, label.w, label.h);
+    ctx.fillStyle = '#718096';
+    ctx.fillRect(b.x + b.w * 0.25, b.y + b.h * 0.47, b.w * 0.5, 3);
+    ctx.fillRect(b.x + b.w * 0.25, b.y + b.h * 0.56, b.w * 0.35, 3);
+  }
+
+  for (const id of visible) MARKS[id]?.(ctx, b);
+
+  // Applied repairs show as a duct-tape patch
+  if (handling.repaired.length > 0) {
+    ctx.fillStyle = '#9aa0a6';
+    ctx.fillRect(b.x + b.w * 0.1, b.y + b.h * 0.1, b.w * 0.3, 14);
+  }
+}
+
+// ---- back -----------------------------------------------------------------------
+
+const BACK_MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Rect) => void>> = {
+  bottomless: (ctx, b) => {
     ctx.fillStyle = '#000';
     ctx.beginPath();
     ctx.ellipse(b.x + b.w / 2, b.y + b.h / 2, b.w * 0.36, b.h * 0.34, 0, 0, Math.PI * 2);
@@ -361,66 +321,117 @@ function drawUnderside(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, han
     ctx.strokeStyle = '#1a1a2e';
     ctx.lineWidth = 4;
     ctx.stroke();
-  } else {
-    ctx.fillStyle = '#b08a52'; // sealed-bottom tape cross
-    ctx.fillRect(b.x, b.y + b.h / 2 - 5, b.w, 10);
-    ctx.fillRect(b.x + b.w / 2 - 5, b.y, 10, b.h);
-  }
-  if (pkg.defects.includes('wet_cardboard') && !handling.repaired.includes('wet_cardboard')) {
+  },
+  wet_cardboard: (ctx, b) => {
     ctx.fillStyle = 'rgba(30, 40, 70, 0.55)';
     ctx.beginPath();
     ctx.ellipse(b.x + b.w * 0.3, b.y + b.h * 0.6, b.w * 0.22, b.h * 0.2, 0.4, 0, Math.PI * 2);
     ctx.fill();
+  },
+  crushed_corner: (ctx, b) => {
+    ctx.fillStyle = '#3d2f1f';
+    ctx.beginPath();
+    ctx.moveTo(b.x + b.w, b.y);
+    ctx.lineTo(b.x + b.w - 40, b.y);
+    ctx.lineTo(b.x + b.w, b.y + 40);
+    ctx.fill();
+  },
+  bulging: (ctx, b) => {
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(b.x + b.w / 2, b.y + b.h / 2, b.w * 0.42, b.h * 0.4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  },
+};
+
+function drawBack(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling: Handling): void {
+  const visible = visibleDefects(pkg, handling, 'back');
+  ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 0.72);
+  bodyPath(ctx, pkg, b);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(b.x + 8, b.y + 8, b.w - 16, b.h - 16);
+
+  // A sealed bottom has a tape cross; a missing one has a void instead.
+  if (!visible.includes('bottomless')) {
+    ctx.fillStyle = '#b08a52';
+    ctx.fillRect(b.x, b.y + b.h / 2 - 5, b.w, 10);
+    ctx.fillRect(b.x + b.w / 2 - 5, b.y, 10, b.h);
   }
+  for (const id of visible) BACK_MARKS[id]?.(ctx, b);
   if (handling.repaired.length > 0) {
     ctx.fillStyle = '#9aa0a6';
     ctx.fillRect(b.x + b.w * 0.2, b.y + b.h * 0.2, b.w * 0.6, 12);
   }
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Other side', 10, 16);
 }
 
-// ---- main body -----------------------------------------------------------------
+// ---- inside ---------------------------------------------------------------------
 
-function drawTopSide(
+function drawInsideScreen(
   ctx: CanvasRenderingContext2D,
   pkg: Package,
-  b: Rect,
   handling: Handling,
-  revealed: DefectId[],
-  contents: Contents,
-  open: number,
+  width: number,
+  height: number,
 ): void {
-  if (open > 0) drawInside(ctx, pkg, b, contents, open);
+  const { wall, floorY, cx } = insideLayout(width, height);
+  const contents = contentsFor(pkg, handling.repaired);
+  const base = BODY_COLOR[pkg.kind];
+  const wallPath = (): void => {
+    ctx.beginPath();
+    if (flat(pkg.kind)) ctx.rect(wall.x, wall.y, wall.w, wall.h);
+    else ctx.roundRect(wall.x, wall.y, wall.w, wall.h, 28);
+  };
 
-  ctx.fillStyle = BODY_COLOR[pkg.kind];
-  bodyPath(ctx, pkg, b);
+  wallPath();
+  ctx.fillStyle = darken(base, 0.5);
   ctx.fill();
+  ctx.save();
+  wallPath();
+  ctx.clip();
+  ctx.fillStyle = darken(base, 0.32);
+  ctx.fillRect(wall.x, floorY, wall.w, wall.y + wall.h - floorY);
+  ctx.restore();
+  wallPath();
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
 
-  // Seal tape strip, drawn unless the tape is torn
-  if (flat(pkg.kind) && !revealed.includes('torn_tape')) {
-    ctx.fillStyle = '#b08a52';
-    ctx.fillRect(b.x, b.y + 4, b.w, 8);
+  const hasVoid = contents.extras.includes('void');
+  // The contents are drawn bigger than on the belt; a bottomless box swallows them.
+  ctx.save();
+  ctx.translate(cx, floorY + (hasVoid ? 10 : 0));
+  ctx.scale(1.7, 1.7);
+  drawItem(ctx, contents.item, 0, 0);
+  for (const extra of contents.extras) drawExtraBehind(ctx, extra, 0, 0);
+  ctx.restore();
+
+  if (contents.extras.includes('liquid')) {
+    ctx.fillStyle = '#3b82c4';
+    ctx.beginPath();
+    ctx.ellipse(cx, floorY + 16, 80, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (hasVoid) {
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(cx, floorY + 14, 72, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 3;
+    ctx.stroke();
   }
 
-  // Contents label, absent when the defect is present and unrepaired
-  if (!revealed.includes('missing_label')) {
-    ctx.fillStyle = '#fdfdf5';
-    ctx.fillRect(b.x + b.w * 0.2, b.y + b.h * 0.4, b.w * 0.6, b.h * 0.3);
-    ctx.fillStyle = '#718096';
-    ctx.fillRect(b.x + b.w * 0.25, b.y + b.h * 0.47, b.w * 0.5, 3);
-    ctx.fillRect(b.x + b.w * 0.25, b.y + b.h * 0.56, b.w * 0.35, 3);
-  }
-
-  // When open, the inside view replaces the outside storm and glow.
-  const skipWhenOpen: DefectId[] = open > 0 ? ['tiny_weather', 'scorching'] : [];
-  for (const id of revealed) if (!skipWhenOpen.includes(id)) MARKS[id]?.(ctx, b);
-
-  // Applied repairs show as a duct-tape patch
-  if (handling.repaired.length > 0) {
-    ctx.fillStyle = '#9aa0a6';
-    ctx.fillRect(b.x + b.w * 0.1, b.y + b.h * 0.1, b.w * 0.3, 14);
-  }
-
-  if (open > 0) drawRim(ctx, pkg, b, contents, open);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Inside the ${pkg.kind}`, wall.x + 8, wall.y + 16);
 }
 
 // ---- overlays for each interaction ---------------------------------------------
@@ -556,39 +567,33 @@ function drawRepairFlash(ctx: CanvasRenderingContext2D, b: Rect, p: number): voi
   ctx.restore();
 }
 
+// ---- entry point ----------------------------------------------------------------
+
 export function drawPackage(
   ctx: CanvasRenderingContext2D,
   pkg: Package,
   handling: Handling,
-  view: View = REST,
+  motion: Motion = REST,
 ): void {
   const { width, height } = ctx.canvas;
   ctx.clearRect(0, 0, width, height);
-  drawBelt(ctx, width, height);
+  const view = viewOf(handling);
+  if (view === 'inside') {
+    drawInsideScreen(ctx, pkg, handling, width, height);
+    return;
+  }
 
+  drawBelt(ctx, width, height);
   const b = bodyRect(pkg.kind, width, height);
-  const revealed = revealedDefects(pkg, handling);
-  const contents = contentsFor(pkg);
-  const { action, progress: p } = view;
-  const open = handling.opened ? (action === 'open' ? ease(p) : 1) : 0;
+  const { action, progress: p } = motion;
 
   ctx.save();
-  if (action === 'shake') ctx.translate(Math.sin(p * Math.PI * 10) * 10 * (1 - p), 0);
-  let underside = false;
-  if (action === 'rotate') {
-    // Tumble over and back: squash flat, show the underside, squash flat, come back.
-    const cos = Math.cos(p * Math.PI * 2);
-    const cy = b.y + b.h / 2;
-    ctx.translate(0, cy);
-    ctx.scale(1, Math.max(0.04, Math.abs(cos)));
-    ctx.translate(0, -cy);
-    underside = cos < 0;
-  }
-  if (underside) drawUnderside(ctx, pkg, b, handling);
-  else drawTopSide(ctx, pkg, b, handling, revealed, contents, open);
+  if (view === 'front' && action === 'shake') ctx.translate(Math.sin(p * Math.PI * 10) * 10 * (1 - p), 0);
+  if (view === 'back') drawBack(ctx, pkg, b, handling);
+  else drawFront(ctx, pkg, b, handling);
   ctx.restore();
 
-  if (p >= 1 && action !== null) return; // finished: the resting pose has no overlay
+  if (view !== 'front' || (p >= 1 && action !== null)) return; // tool overlays only on the front, and only while playing
   switch (action) {
     case 'scale':
       drawScale(ctx, pkg, b, p, width, height);

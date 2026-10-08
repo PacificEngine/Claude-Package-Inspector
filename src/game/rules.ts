@@ -172,18 +172,25 @@ export interface Problem {
   source: 'defect' | 'address';
   id: DefectId | AddressIssue;
   repairTool: RepairTool | null;
+  requiresOpen: boolean;
 }
 
 export function rejectWorthyProblems(pkg: Package, card: RuleCard): Problem[] {
   const defects: Problem[] = pkg.defects
     .filter((id) => card.rejectDefects.includes(id))
-    .map((id) => ({ source: 'defect', id, repairTool: DEFECTS[id].repairedBy }));
+    .map((id) => ({
+      source: 'defect',
+      id,
+      repairTool: DEFECTS[id].repairedBy,
+      requiresOpen: DEFECTS[id].repairNeedsOpen,
+    }));
   const addresses: Problem[] = addressIssues(pkg.address)
     .filter((issue) => card.rejectAddress.includes(issue))
     .map((issue) => ({
       source: 'address',
       id: issue,
       repairTool: isRepairableAddressIssue(issue) ? 'relabel' : null,
+      requiresOpen: false,
     }));
   return [...defects, ...addresses];
 }
@@ -201,9 +208,14 @@ export function isShippable(pkg: Package, handling: Handling, card: RuleCard): b
   return unresolvedProblems(pkg, handling, card).length === 0;
 }
 
-export function needsRepair(pkg: Package, card: RuleCard): boolean {
+// True when fixing the package means opening it: it can be saved, and some fix reaches inside.
+export function needsOpening(pkg: Package, card: RuleCard): boolean {
   const problems = rejectWorthyProblems(pkg, card);
-  return problems.length > 0 && problems.every((p) => p.repairTool !== null);
+  return (
+    problems.length > 0 &&
+    problems.every((p) => p.repairTool !== null) &&
+    problems.some((p) => p.requiresOpen)
+  );
 }
 
 export function isCorrectVerdict(

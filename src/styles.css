@@ -21,3 +21,9 @@ canvas { background: #20242c; border-radius: 8px; width: 100%; max-width: 320px;
 .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 select { background: #3a4150; color: inherit; border: 0; padding: 8px 10px; border-radius: 6px; font-size: 14px; }
 .inside { margin: 8px 0 0; color: #f6e05e; }
+
+.stage { position: relative; width: 100%; max-width: 320px; }
+.stage canvas { display: block; }
+.marker { position: absolute; padding: 0; background: transparent; border: 2px dashed transparent; border-radius: 6px; cursor: pointer; }
+.marker:hover, .marker:focus-visible { border-color: #f6e05e; background: rgba(246, 224, 94, 0.14); }
+.marker.noted { border-color: rgba(246, 224, 94, 0.35); }

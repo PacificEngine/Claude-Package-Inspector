@@ -14,11 +14,11 @@ describe('animationProgress', () => {
   });
 
   it('moves forward in between and clamps outside the range', () => {
-    const half = animationProgress('rotate', ANIMATION_MS.rotate / 2, false);
+    const half = animationProgress('shake', ANIMATION_MS.shake / 2, false);
     expect(half).toBeGreaterThan(0);
     expect(half).toBeLessThan(1);
-    expect(animationProgress('rotate', -50, false)).toBe(0);
-    expect(animationProgress('rotate', 99999, false)).toBe(1);
+    expect(animationProgress('shake', -50, false)).toBe(0);
+    expect(animationProgress('shake', 99999, false)).toBe(1);
   });
 
   it('jumps to the end pose when the player prefers reduced motion', () => {

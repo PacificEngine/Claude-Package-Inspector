@@ -12,9 +12,12 @@ import {
 } from '../game/campaign';
 import {
   MAX_STRIKES,
-  currentClues,
+  closeBox,
+  currentNotes,
   currentPackage,
+  flipBox,
   inspect,
+  noteDefect,
   openBox,
   repair,
   stamp,
@@ -28,13 +31,20 @@ import {
   REPAIR_ITEMS,
   isInspectionItem,
   unlockedItems,
+  type PurchasableTool,
 } from '../game/shop';
 import { animationProgress, type PackageAction } from './animation';
-import { contentsFor, describeContents } from './contents';
+import { contentsFor } from './contents';
 import { button, el } from './dom';
 import { createSoundControls } from './soundControls';
 import { money } from './money';
 import { drawPackage } from './packageArt';
+import { DEFECTS } from '../game/defects';
+import { viewOf } from '../game/handling';
+import { markerNoted, markersFor, type Marker } from './markers';
+
+const STAGE_W = 320;
+const STAGE_H = 260;
 
 const fineText = (fines: number): string => money(fines > 0 ? -fines : 0);
 
@@ -111,7 +121,7 @@ export function mount(root: HTMLElement, seed: number): void {
     const card = el('div', { cls: 'panel' }, [
       el('h3', { text: s.card.title }),
       el('ul', {}, s.card.lines.map((line) => el('li', { text: line }))),
-      el('p', { text: 'Opening a box that needs no repair costs 2x its shipping fee.' }),
+      el('p', { text: 'Opening a box that does not need opening costs 2x its shipping fee.' }),
     ]);
 
     if (!pkg) {
@@ -126,45 +136,75 @@ export function mount(root: HTMLElement, seed: number): void {
       ]);
     }
 
-    const canvas = el('canvas', { attrs: { width: '320', height: '260' } });
+    const view = viewOf(s.handling);
+    const canvas = el('canvas', { attrs: { width: String(STAGE_W), height: String(STAGE_H) } });
     animate(canvas, s);
+
+    // Each marker is a real button over the drawing: click to take a note, Tab to reach it.
+    // Largest first, so smaller, more specific markers come later in the DOM and sit on top, still clickable.
+    const byAreaDescending = (a: Marker, b: Marker): number => b.rect.w * b.rect.h - a.rect.w * a.rect.h;
+    const markerButtons = markersFor(pkg, s.handling, STAGE_W, STAGE_H)
+      .sort(byAreaDescending)
+      .map((m) => {
+        const noted = markerNoted(pkg, s.handling, m);
+        const b = button('', act((st) => noteDefect(st, m.defect, m.view)), false, noted ? 'marker noted' : 'marker');
+        b.setAttribute('aria-label', `${noted ? 'Noted' : 'Take a note'}: ${DEFECTS[m.defect].label}`);
+        b.style.left = `${(m.rect.x / STAGE_W) * 100}%`;
+        b.style.top = `${(m.rect.y / STAGE_H) * 100}%`;
+        b.style.width = `${(m.rect.w / STAGE_W) * 100}%`;
+        b.style.height = `${(m.rect.h / STAGE_H) * 100}%`;
+        return b;
+      });
+    const stage = el('div', { cls: 'stage' }, [canvas, ...markerButtons]);
 
     const label = el('div', { cls: 'label-card' }, [
       ...addressLines(pkg.address).map((line) => el('div', { text: line })),
       el('div', { text: `Declared weight: ${pkg.declaredWeightKg} kg` }),
     ]);
-    const inside = s.handling.opened
-      ? [el('p', { cls: 'inside', text: `Inside: ${describeContents(contentsFor(pkg))}` })]
-      : [];
+    const inside =
+      view === 'inside'
+        ? [el('p', { cls: 'inside', text: `Inside: ${contentsFor(pkg, s.handling.repaired).item.name}` })]
+        : [];
 
+    const noted = currentNotes(s);
     const notes = el('div', { cls: 'panel' }, [
       el('h3', { text: 'Notes' }),
-      el('ul', {}, currentClues(s).map((c) => el('li', { text: c.text }))),
+      noted.length > 0
+        ? el('ul', {}, noted.map((c) => el('li', { text: c.text })))
+        : el('p', { cls: 'muted', text: 'Click a marker on the package to take a note.' }),
     ]);
 
-    const owned = INSPECTION_ITEMS.filter((t) => s.inventory.tools.includes(t));
+    const tools = INSPECTION_ITEMS.filter(
+      (t): t is Exclude<PurchasableTool, 'rotate'> => t !== 'rotate' && s.inventory.tools.includes(t),
+    );
+    const ownsFlip = s.inventory.tools.includes('rotate');
+    const faceUp = view === 'front';
     const inspectRow = el('div', { cls: 'row' }, [
-      ...owned.map((t) => button(ITEM_NAMES[t], act((st) => inspect(st, t), t), s.handling.used.includes(t))),
-      ...(owned.length === 0 ? [el('span', { cls: 'muted', text: 'No inspection tools yet.' })] : []),
+      ...tools.map((t) => button(ITEM_NAMES[t], act((st) => inspect(st, t), t), !faceUp || s.handling.used.includes(t))),
+      ...(ownsFlip
+        ? [button(view === 'back' ? 'Flip box back' : 'Flip box', act(flipBox), view === 'inside')]
+        : []),
+      ...(tools.length === 0 && !ownsFlip ? [el('span', { cls: 'muted', text: 'No inspection tools yet.' })] : []),
     ]);
 
     const stocked = REPAIR_ITEMS.filter((t) => s.inventory.supplies[t] > 0);
     const repairRow = el('div', { cls: 'row' }, [
-      button('Open box', act(openBox, 'open'), s.handling.opened),
+      button(view === 'inside' ? 'Close box' : 'Open box', act(view === 'inside' ? closeBox : openBox), view === 'back'),
       ...stocked.map((t) =>
         button(`${ITEM_NAMES[t]} (${s.inventory.supplies[t]})`, act((st) => repair(st, t), 'repair')),
       ),
     ]);
 
     const stampRow = el('div', { cls: 'row' }, [
-      button('SHIP', act((st) => stamp(st, 'ship')), false, 'ship'),
+      button('SHIP', act((st) => stamp(st, 'ship')), s.handling.opened, 'ship'),
       button('REJECT', act((st) => stamp(st, 'reject')), false, 'reject'),
+      ...(s.handling.opened ? [el('span', { cls: 'muted', text: 'Close the box before shipping.' })] : []),
     ]);
 
     return el('div', {}, [
       hud,
       el('div', { cls: 'grid' }, [
-        el('div', {}, [canvas, label, ...inside]),
+        el('div', {}, [stage, label, ...inside]),
         el('div', {}, [
           card,
           notes,

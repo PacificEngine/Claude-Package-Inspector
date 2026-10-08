@@ -63,4 +63,10 @@ describe('describeContents', () => {
     expect(text).toMatch(/bottomless black void/);
     expect(text).toMatch(/tiny storm/);
   });
+
+  it('leaves out what a repair has fixed', () => {
+    const pkg = makePackage({ defects: ['bottomless', 'ticking'] });
+    expect(contentsFor(pkg, ['bottomless']).extras).toEqual(['clock']);
+    expect(contentsFor(pkg, ['bottomless', 'ticking']).extras).toEqual([]);
+  });
 });

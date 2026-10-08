@@ -13,16 +13,20 @@ export function applyRepair(
   inventory: Inventory,
   tool: RepairTool,
 ): RepairResult {
-  if (!handling.opened) return { ok: false, reason: 'Open the box first.' };
   if (inventory.supplies[tool] < 1) return { ok: false, reason: 'You are out of that supply.' };
 
-  const fixedDefects = revealedDefects(pkg, handling).filter(
-    (id) => DEFECTS[id].repairedBy === tool,
-  );
+  const matching = revealedDefects(pkg, handling).filter((id) => DEFECTS[id].repairedBy === tool);
+  // Only repairs that reach inside need the box open; patching tape or a dent works from outside.
+  const fixedDefects = handling.opened ? matching : matching.filter((id) => !DEFECTS[id].repairNeedsOpen);
+
   const relabelsAddress =
     tool === 'relabel' &&
     !handling.relabeled &&
     addressIssues(pkg.address).some(isRepairableAddressIssue);
+
+  if (fixedDefects.length === 0 && !relabelsAddress && matching.length > 0) {
+    return { ok: false, reason: 'Open the box first.' };
+  }
 
   return {
     ok: true,

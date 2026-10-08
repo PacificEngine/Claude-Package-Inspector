@@ -61,13 +61,18 @@ export interface Package {
 
 // What the player has done to the package currently on the desk.
 export interface Handling {
-  opened: boolean;
+  opened: boolean; // the box is open: the inside view
+  flipped: boolean; // the other side is showing: the back view
+  fined: boolean; // the opening fine was already charged for this package
   used: InspectionTool[];
   repaired: DefectId[];
   relabeled: boolean;
+  notes: string[]; // keys of the clues the player has recorded, in order
 }
 
 export interface Inventory {
   tools: InspectionTool[];
   supplies: Record<RepairTool, number>;
 }
+
+export type View = 'front' | 'back' | 'inside';

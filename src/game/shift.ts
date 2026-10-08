@@ -1,14 +1,14 @@
 import { ADDRESS_ISSUE_LABELS } from './address';
 import { DEFECTS } from './defects';
 import { openingFine } from './economy';
-import { newHandling } from './handling';
-import { cluesFor, type Clue } from './inspection';
+import { newHandling, viewOf } from './handling';
+import { CLUE_CHANNEL, cluesFor, markerClues, notedClues, type Clue } from './inspection';
 import { generatePackage } from './packages';
 import { createRng } from './rng';
 import { applyRepair } from './repair';
 import {
   isCorrectVerdict,
-  needsRepair,
+  needsOpening,
   ruleCardForDay,
   unresolvedProblems,
   type RuleCard,
@@ -22,6 +22,7 @@ import type {
   Package,
   RepairTool,
   Verdict,
+  View,
 } from './types';
 
 export const MAX_STRIKES = 3;
@@ -75,24 +76,72 @@ export function currentPackage(s: ShiftState): Package | null {
   return s.done ? null : (s.queue[s.index] ?? null);
 }
 
-export function currentClues(s: ShiftState): Clue[] {
+const idle = (s: ShiftState): ActionResult => ({ state: s, message: 'The shift is over.' });
+
+const noteKeys = (handling: Handling, keys: string[]): string[] => [
+  ...handling.notes,
+  ...keys.filter((k) => !handling.notes.includes(k)),
+];
+
+export function currentNotes(s: ShiftState): Clue[] {
   const pkg = currentPackage(s);
-  if (!pkg) return [];
-  return s.handling.used.flatMap((tool) => cluesFor(pkg, tool, s.handling.repaired));
+  return pkg ? notedClues(pkg, s.handling) : [];
 }
 
-const idle = (s: ShiftState): ActionResult => ({ state: s, message: 'The shift is over.' });
+export function closeBox(s: ShiftState): ActionResult {
+  if (!currentPackage(s)) return idle(s);
+  if (!s.handling.opened) return { state: s, message: 'The box is already closed.' };
+  return { state: { ...s, handling: { ...s.handling, opened: false } }, message: 'Box closed.' };
+}
+
+export function flipBox(s: ShiftState): ActionResult {
+  if (!currentPackage(s)) return idle(s);
+  if (!s.inventory.tools.includes('rotate')) return { state: s, message: 'You do not own that tool.' };
+  if (s.handling.opened) return { state: s, message: 'Close the box first.' };
+  const flipped = !s.handling.flipped;
+  const used = s.handling.used.includes('rotate') ? s.handling.used : [...s.handling.used, 'rotate' as const];
+  return {
+    state: { ...s, handling: { ...s.handling, flipped, used } },
+    message: flipped ? 'You flip the box over.' : 'You turn the box back over.',
+  };
+}
+
+export function noteDefect(s: ShiftState, defect: DefectId, view: View): ActionResult {
+  const pkg = currentPackage(s);
+  if (!pkg) return idle(s);
+  if (viewOf(s.handling) !== view) return { state: s, message: 'You are not looking at that side.' };
+  const clues = markerClues(pkg, s.handling, defect, view);
+  if (clues.length === 0) return { state: s, message: 'Nothing to note there.' };
+  const fresh = clues.filter((c) => !s.handling.notes.includes(c.key));
+  if (fresh.length === 0) return { state: s, message: 'Already noted.' };
+  return {
+    state: { ...s, handling: { ...s.handling, notes: noteKeys(s.handling, fresh.map((c) => c.key)) } },
+    message: fresh.map((c) => c.text).join(' '),
+  };
+}
 
 export function inspect(s: ShiftState, tool: InspectionTool): ActionResult {
   const pkg = currentPackage(s);
   if (!pkg) return idle(s);
+  if (tool === 'rotate') return { state: s, message: 'Use Flip box for that.' };
   if (!s.inventory.tools.includes(tool)) return { state: s, message: 'You do not own that tool.' };
+  if (viewOf(s.handling) !== 'front') {
+    return { state: s, message: 'Close the box and turn it face up first.' };
+  }
   if (s.handling.used.includes(tool)) return { state: s, message: 'You already checked that.' };
+  const clues = cluesFor(pkg, tool, s.handling.repaired);
+  // Sounds and readings need no marker, so they go straight into the notes.
+  const auto = CLUE_CHANNEL[tool] === 'visual' ? [] : clues.map((c) => c.key);
   return {
-    state: { ...s, handling: { ...s.handling, used: [...s.handling.used, tool] } },
-    message: cluesFor(pkg, tool, s.handling.repaired)
-      .map((c) => c.text)
-      .join(' '),
+    state: {
+      ...s,
+      handling: {
+        ...s.handling,
+        used: [...s.handling.used, tool],
+        notes: noteKeys(s.handling, auto),
+      },
+    },
+    message: clues.map((c) => c.text).join(' '),
   };
 }
 
@@ -100,10 +149,16 @@ export function openBox(s: ShiftState): ActionResult {
   const pkg = currentPackage(s);
   if (!pkg) return idle(s);
   if (s.handling.opened) return { state: s, message: 'Already open.' };
-  const fine = needsRepair(pkg, s.card) ? 0 : openingFine(pkg);
+  if (s.handling.flipped) return { state: s, message: 'Flip the box back first.' };
+  // Opening a box that did not need it is fined, but only once however often it is reopened.
+  const fine = needsOpening(pkg, s.card) || s.handling.fined ? 0 : openingFine(pkg);
   return {
-    state: { ...s, handling: { ...s.handling, opened: true }, fines: s.fines + fine },
-    message: fine > 0 ? `Fined $${fine}: that box needed no repair.` : 'Box opened.',
+    state: {
+      ...s,
+      handling: { ...s.handling, opened: true, fined: s.handling.fined || fine > 0 },
+      fines: s.fines + fine,
+    },
+    message: fine > 0 ? `Fined $${fine}: that box did not need opening.` : 'Box opened.',
   };
 }
 
@@ -124,6 +179,9 @@ export function repair(s: ShiftState, tool: RepairTool): ActionResult {
 export function stamp(s: ShiftState, verdict: Verdict): ActionResult {
   const pkg = currentPackage(s);
   if (!pkg) return idle(s);
+  if (verdict === 'ship' && s.handling.opened) {
+    return { state: s, message: 'Close the box before shipping.' };
+  }
   const correct = isCorrectVerdict(pkg, s.handling, s.card, verdict);
   const strikes = s.strikes + (correct ? 0 : 1);
   const earned = s.earned + (correct && verdict === 'ship' ? pkg.fee : 0);

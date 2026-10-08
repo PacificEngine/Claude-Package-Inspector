@@ -10,6 +10,10 @@ export interface DefectDef {
   fantastical: boolean;
   // First day this defect may appear (see consistency test in Task 9).
   minDay: number;
+  // Repairing it requires the box to be open.
+  repairNeedsOpen: boolean;
+  // What the player sees when the box is open, if it shows inside.
+  insideClue?: string;
 }
 
 const ANY: readonly PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube'];
@@ -27,6 +31,8 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'sealant',
     fantastical: false,
     minDay: 1,
+    repairNeedsOpen: true,
+    insideClue: 'Liquid is pooling at the bottom inside.',
   },
   crushed_corner: {
     id: 'crushed_corner',
@@ -39,6 +45,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'tape',
     fantastical: false,
     minDay: 1,
+    repairNeedsOpen: false,
   },
   torn_tape: {
     id: 'torn_tape',
@@ -48,6 +55,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'tape',
     fantastical: false,
     minDay: 1,
+    repairNeedsOpen: false,
   },
   bulging: {
     id: 'bulging',
@@ -60,6 +68,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'valve',
     fantastical: false,
     minDay: 1,
+    repairNeedsOpen: true,
   },
   wet_cardboard: {
     id: 'wet_cardboard',
@@ -72,6 +81,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'sealant',
     fantastical: false,
     minDay: 2,
+    repairNeedsOpen: true,
   },
   wrong_weight: {
     id: 'wrong_weight',
@@ -81,6 +91,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'relabel',
     fantastical: false,
     minDay: 3,
+    repairNeedsOpen: true,
   },
   rattling: {
     id: 'rattling',
@@ -90,6 +101,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: null,
     fantastical: false,
     minDay: 4,
+    repairNeedsOpen: true,
   },
   missing_label: {
     id: 'missing_label',
@@ -99,6 +111,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'relabel',
     fantastical: false,
     minDay: 1,
+    repairNeedsOpen: true,
   },
   bottomless: {
     id: 'bottomless',
@@ -111,6 +124,8 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'tape',
     fantastical: true,
     minDay: 3,
+    repairNeedsOpen: true,
+    insideClue: 'Inside there is only a black void where the floor should be.',
   },
   humming: {
     id: 'humming',
@@ -120,6 +135,8 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'foam',
     fantastical: true,
     minDay: 6,
+    repairNeedsOpen: true,
+    insideClue: 'Faint wavy lines rise from the contents.',
   },
   whispering: {
     id: 'whispering',
@@ -129,6 +146,8 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'foam',
     fantastical: true,
     minDay: 6,
+    repairNeedsOpen: true,
+    insideClue: 'Faint wavy lines rise from the contents.',
   },
   ticking: {
     id: 'ticking',
@@ -138,6 +157,8 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'foam',
     fantastical: true,
     minDay: 6,
+    repairNeedsOpen: true,
+    insideClue: 'A small clock sits among the contents, ticking.',
   },
   scorching: {
     id: 'scorching',
@@ -147,6 +168,8 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: null,
     fantastical: true,
     minDay: 4,
+    repairNeedsOpen: true,
+    insideClue: 'Something inside glows white-hot.',
   },
   future_contents: {
     id: 'future_contents',
@@ -156,6 +179,8 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: null,
     fantastical: true,
     minDay: 4,
+    repairNeedsOpen: true,
+    insideClue: 'One of the gadgets inside looks slightly wrong.',
   },
   heavier_inside: {
     id: 'heavier_inside',
@@ -165,6 +190,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: null,
     fantastical: true,
     minDay: 3,
+    repairNeedsOpen: true,
   },
   tiny_weather: {
     id: 'tiny_weather',
@@ -177,6 +203,8 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     repairedBy: 'sealant',
     fantastical: true,
     minDay: 4,
+    repairNeedsOpen: true,
+    insideClue: 'A tiny storm swirls above the contents.',
   },
 };
 

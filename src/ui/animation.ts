@@ -1,6 +1,4 @@
 export type PackageAction =
-  | 'open'
-  | 'rotate'
   | 'shake'
   | 'scale'
   | 'uv'
@@ -9,8 +7,6 @@ export type PackageAction =
   | 'repair';
 
 export const PACKAGE_ACTIONS: readonly PackageAction[] = [
-  'open',
-  'rotate',
   'shake',
   'scale',
   'uv',
@@ -20,8 +16,6 @@ export const PACKAGE_ACTIONS: readonly PackageAction[] = [
 ];
 
 export const ANIMATION_MS: Record<PackageAction, number> = {
-  open: 600,
-  rotate: 900,
   shake: 600,
   scale: 900,
   uv: 800,

@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { buy, endDay, nextDay, startCampaign, toShop, type Campaign } from './campaign';
-import { LAST_DAY, needsRepair, rejectWorthyProblems, isShippable } from './rules';
-import { currentPackage, inspect, openBox, repair, stamp, type ShiftState } from './shift';
+import { LAST_DAY, needsOpening, rejectWorthyProblems, isShippable } from './rules';
+import { closeBox, currentPackage, flipBox, inspect, openBox, repair, stamp, type ShiftState } from './shift';
 import { unlockedItems } from './shop';
 
 interface ShiftMetrics {
   opened: number;
   repaired: number;
+  refused: number;
   skippedForStock: number;
 }
 
@@ -14,21 +15,36 @@ function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftSt
   let s = initial;
   while (!s.done) {
     const pkg = currentPackage(s)!;
-    if (needsRepair(pkg, s.card)) {
-      const tools = new Set(rejectWorthyProblems(pkg, s.card).map((p) => p.repairTool!));
+    const problems = rejectWorthyProblems(pkg, s.card);
+    const repairable = problems.length > 0 && problems.every((p) => p.repairTool !== null);
+    if (repairable) {
+      const tools = new Set(problems.map((p) => p.repairTool!));
       const allStocked = [...tools].every((t) => s.inventory.supplies[t] > 0);
       if (allStocked) {
-        for (const tool of s.inventory.tools) s = inspect(s, tool).state;
-        s = openBox(s).state;
-        metrics.opened++;
+        for (const tool of s.inventory.tools) {
+          if (tool !== 'look' && tool !== 'rotate') s = inspect(s, tool).state;
+        }
+        // Reveal the back, then return the box face up.
+        if (s.inventory.tools.includes('rotate')) {
+          s = flipBox(s).state;
+          s = flipBox(s).state;
+        }
+        // Exterior-only repairs (tape on tape or a dent) are done with the box closed.
+        if (needsOpening(pkg, s.card)) {
+          s = openBox(s).state;
+          metrics.opened++;
+        }
         for (const t of tools) {
-          s = repair(s, t).state;
-          metrics.repaired++;
+          const result = repair(s, t);
+          s = result.state;
+          if (result.message.startsWith('Fixed:')) metrics.repaired++;
+          if (result.message === 'Open the box first.') metrics.refused++;
         }
       } else {
         metrics.skippedForStock++;
       }
     }
+    if (s.handling.opened) s = closeBox(s).state;
     s = stamp(s, isShippable(pkg, s.handling, s.card) ? 'ship' : 'reject').state;
   }
   return s;
@@ -44,7 +60,7 @@ function stockUp(c: Campaign): Campaign {
 describe('a perfect inspector playing all seven days', () => {
   for (const seed of [1, 2, 3]) {
     it(`finishes the campaign with no strikes (seed ${seed})`, () => {
-      const metrics: ShiftMetrics = { opened: 0, repaired: 0, skippedForStock: 0 };
+      const metrics: ShiftMetrics = { opened: 0, repaired: 0, refused: 0, skippedForStock: 0 };
       let c = startCampaign(seed);
       while (c.phase !== 'finished') {
         c = { ...c, shift: playShiftPerfectly(c.shift!, metrics) };
@@ -58,6 +74,7 @@ describe('a perfect inspector playing all seven days', () => {
       expect(c.bank).toBeGreaterThan(0);
       expect(metrics.opened).toBeGreaterThan(0);
       expect(metrics.repaired).toBeGreaterThan(0);
+      expect(metrics.refused).toBe(0);
     });
   }
 });

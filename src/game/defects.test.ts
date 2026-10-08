@@ -31,3 +31,24 @@ describe('defect catalog', () => {
     expect(DEFECTS.leaking.fantastical).toBe(false);
   });
 });
+
+describe('repair and inside data', () => {
+  it('lets only torn tape and crushed corner be repaired without opening', () => {
+    const closedOk = ALL_DEFECT_IDS.filter((id) => !DEFECTS[id].repairNeedsOpen).sort();
+    expect(closedOk).toEqual(['crushed_corner', 'torn_tape']);
+  });
+
+  it('has inside clues for exactly the defects that show when the box is opened', () => {
+    const ids = ALL_DEFECT_IDS.filter((id) => DEFECTS[id].insideClue !== undefined).sort();
+    expect(ids).toEqual([
+      'bottomless',
+      'future_contents',
+      'humming',
+      'leaking',
+      'scorching',
+      'ticking',
+      'tiny_weather',
+      'whispering',
+    ]);
+  });
+});

@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { buy, endDay, startCampaign, toShop, type Campaign } from '../game/campaign';
 import { ruleCardForDay } from '../game/rules';
 import { newInventory } from '../game/shop';
-import { openBox, repair, stamp, startShift, type ShiftState } from '../game/shift';
+import { inspect, openBox, repair, stamp, startShift, type ShiftState } from '../game/shift';
 import { inventoryWith, makePackage } from '../game/testing';
-import type { Package } from '../game/types';
+import type { DefectId, Package } from '../game/types';
 import { soundsFor } from './events';
 
 function campaignWith(queue: Package[], day = 1, inventory = newInventory()): Campaign {
@@ -44,13 +44,13 @@ describe('soundsFor', () => {
     expect(soundsFor(d, withShift(d, stamp(d.shift!, 'reject').state))).toEqual(['strike']);
   });
 
-  it('plays fine when opening a box that needs no repair', () => {
+  it('plays fine when opening a box that does not need opening', () => {
     const c = campaignWith([clean]);
     expect(soundsFor(c, withShift(c, openBox(c.shift!).state))).toEqual(['fine']);
   });
 
-  it('is silent when opening a box that needs repair', () => {
-    const c = campaignWith([torn]);
+  it('is silent when opening a box that needs opening', () => {
+    const c = campaignWith([makePackage({ id: 3, defects: ['bottomless'], fee: 20 })], 5);
     expect(soundsFor(c, withShift(c, openBox(c.shift!).state))).toEqual([]);
   });
 
@@ -75,5 +75,38 @@ describe('soundsFor', () => {
     const rich = { ...shop, bank: 100 };
     expect(soundsFor(rich, buy(rich, 'rotate').campaign)).toEqual(['buy']);
     expect(soundsFor(rich, buy(rich, 'scale').campaign)).toEqual([]);
+  });
+
+  describe('soundsFor sound clues', () => {
+    const inv = inventoryWith({}, ['look', 'shake', 'stethoscope']);
+    const afterUsing = (defects: DefectId[], tool: 'shake' | 'stethoscope') => {
+      const c = campaignWith([makePackage({ defects })], 6, inv);
+      return soundsFor(c, withShift(c, inspect(c.shift!, tool).state));
+    };
+
+    it.each<[DefectId, 'shake' | 'stethoscope', string]>([
+      ['rattling', 'shake', 'rattle'],
+      ['future_contents', 'shake', 'slosh'],
+      ['tiny_weather', 'shake', 'thunder'],
+      ['humming', 'stethoscope', 'hum'],
+      ['whispering', 'stethoscope', 'whisper'],
+      ['ticking', 'stethoscope', 'tick'],
+    ])('plays the sound of %s when %s is used', (defect, tool, sound) => {
+      expect(afterUsing([defect], tool)).toEqual([sound]);
+    });
+
+    it('is silent for a quiet result', () => {
+      expect(afterUsing([], 'shake')).toEqual([]);
+    });
+
+    it('is silent for a defect the tool cannot hear', () => {
+      expect(afterUsing(['humming'], 'shake')).toEqual([]);
+    });
+
+    it('does not play again when nothing new was used', () => {
+      const c = campaignWith([makePackage({ defects: ['rattling'] })], 4, inv);
+      const once = withShift(c, inspect(c.shift!, 'shake').state);
+      expect(soundsFor(once, once)).toEqual([]);
+    });
   });
 });

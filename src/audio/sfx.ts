@@ -1,4 +1,4 @@
-export type SoundEvent = 'ship' | 'reject' | 'strike' | 'fine' | 'repair' | 'buy' | 'dayEnd';
+export type SoundEvent = 'ship' | 'reject' | 'strike' | 'fine' | 'repair' | 'buy' | 'dayEnd' | 'rattle' | 'hum' | 'whisper' | 'tick' | 'slosh' | 'thunder';
 
 export const SOUND_EVENTS: readonly SoundEvent[] = [
   'ship',
@@ -8,6 +8,12 @@ export const SOUND_EVENTS: readonly SoundEvent[] = [
   'repair',
   'buy',
   'dayEnd',
+  'rattle',
+  'hum',
+  'whisper',
+  'tick',
+  'slosh',
+  'thunder',
 ];
 
 export interface Tone {
@@ -48,5 +54,38 @@ export function sfxFor(event: SoundEvent): Tone[] {
         blip(784, 0.32, 0.18),
         blip(1047, 0.48, 0.45),
       ];
+    case 'rattle':
+      return [0, 0.09, 0.17, 0.22, 0.31].map((at) => ({
+        type: 'noise' as const,
+        freq: 0,
+        at,
+        dur: 0.05,
+        gain: 0.3,
+      }));
+    case 'hum':
+      return [
+        { type: 'sine', freq: 110, at: 0, dur: 1.0, gain: 0.25 },
+        { type: 'sine', freq: 112, at: 0, dur: 1.0, gain: 0.2 },
+      ];
+    case 'whisper':
+      return [
+        { type: 'noise', freq: 0, at: 0, dur: 0.5, gain: 0.1 },
+        { type: 'noise', freq: 0, at: 0.55, dur: 0.6, gain: 0.08 },
+      ];
+    case 'tick':
+      return [0, 0.35, 0.7].map((at) => ({
+        type: 'square' as const,
+        freq: 1800,
+        at,
+        dur: 0.03,
+        gain: 0.15,
+      }));
+    case 'slosh':
+      return [
+        { type: 'sine', freq: 300, at: 0, dur: 0.35, gain: 0.2, slideTo: 180 },
+        { type: 'sine', freq: 260, at: 0.3, dur: 0.35, gain: 0.18, slideTo: 150 },
+      ];
+    case 'thunder':
+      return [{ type: 'sawtooth', freq: 70, at: 0, dur: 0.9, gain: 0.25, slideTo: 40 }];
   }
 }

@@ -27,6 +27,16 @@ export const CONTENT_ITEMS: Record<PackageKind, ContentsItem[]> = {
     { name: 'old books', art: 'book', color: '#8b5a3c' },
     { name: 'a knitted scarf', art: 'cloth', color: '#c97b9a' },
   ],
+  prism: [
+    { name: 'candles', art: 'sticks', color: '#f2e2b0' },
+    { name: 'a toy tent', art: 'tower', color: '#d95d5d' },
+    { name: 'cheese wedges', art: 'dome', color: '#f2c94c' },
+  ],
+  tetra: [
+    { name: 'crystals', art: 'tower', color: '#8fd3f4' },
+    { name: 'party hats', art: 'tower', color: '#ff7eb6' },
+    { name: 'dice', art: 'book', color: '#e8e8e8' },
+  ],
   can: [
     { name: 'peaches', art: 'dome', color: '#f4a259' },
     { name: 'beans', art: 'dome', color: '#a0522d' },

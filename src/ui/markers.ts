@@ -1,7 +1,7 @@
 import { viewOf } from '../game/handling';
 import { markerClues, visibleDefects } from '../game/inspection';
-import type { DefectId, Handling, Package, View } from '../game/types';
-import { bodyRect, insideLayout, type InsideLayout, type Rect } from './geometry';
+import type { DefectId, Handling, Package, PackageKind, View } from '../game/types';
+import { bodyRect, insideLayout, labelRect, voidRect, type InsideLayout, type Rect } from './geometry';
 
 export interface Marker {
   defect: DefectId;
@@ -9,22 +9,21 @@ export interface Marker {
   rect: Rect;
 }
 
-type OnBody = (b: Rect) => Rect;
+type OnBody = (b: Rect, kind: PackageKind) => Rect;
 
 const FRONT: Partial<Record<DefectId, OnBody>> = {
   leaking: (b) => ({ x: b.x + b.w * 0.15, y: b.y + b.h, w: b.w * 0.7, h: 24 }),
   crushed_corner: (b) => ({ x: b.x + b.w - 44, y: b.y, w: 44, h: 44 }),
   torn_tape: (b) => ({ x: b.x, y: b.y, w: b.w, h: 14 }),
   bulging: (b) => ({ x: b.x - b.w * 0.12, y: b.y, w: b.w * 1.24, h: b.h }),
-  missing_label: (b) => ({ x: b.x + b.w * 0.2, y: b.y + b.h * 0.4, w: b.w * 0.6, h: b.h * 0.3 }),
-  wet_cardboard: (b) => ({ x: b.x, y: b.y + b.h * 0.6, w: b.w, h: b.h * 0.4 }),
+  missing_label: (b, kind) => labelRect(kind, b),
   bottomless: (b) => ({ x: b.x + b.w * 0.1, y: b.y + b.h - 6, w: b.w * 0.8, h: 26 }),
   scorching: (b) => ({ x: b.x - 10, y: b.y - 10, w: b.w + 20, h: b.h + 20 }),
   tiny_weather: (b) => ({ x: b.x + b.w / 2 - 30, y: b.y - 40, w: 60, h: 46 }),
 };
 
 const BACK: Partial<Record<DefectId, OnBody>> = {
-  bottomless: (b) => ({ x: b.x + b.w * 0.14, y: b.y + b.h * 0.16, w: b.w * 0.72, h: b.h * 0.68 }),
+  bottomless: (b, kind) => voidRect(kind, b),
   wet_cardboard: (b) => ({ x: b.x + b.w * 0.08, y: b.y + b.h * 0.4, w: b.w * 0.44, h: b.h * 0.4 }),
   crushed_corner: (b) => ({ x: b.x + b.w - 44, y: b.y, w: 44, h: 44 }),
   bulging: (b) => ({ x: b.x + 8, y: b.y + 8, w: b.w - 16, h: b.h - 16 }),
@@ -53,7 +52,7 @@ export function markersFor(pkg: Package, handling: Handling, width: number, heig
     const rect =
       view === 'inside'
         ? INSIDE[defect]?.(layout)
-        : (view === 'front' ? FRONT : BACK)[defect]?.(body);
+        : (view === 'front' ? FRONT : BACK)[defect]?.(body, pkg.kind);
     if (rect) markers.push({ defect, view, rect });
   }
   return markers;

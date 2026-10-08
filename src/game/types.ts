@@ -1,4 +1,4 @@
-export type PackageKind = 'box' | 'can' | 'parcel' | 'jar' | 'tube';
+export type PackageKind = 'box' | 'can' | 'parcel' | 'jar' | 'tube' | 'prism' | 'tetra';
 
 export type InspectionTool =
   | 'look'
@@ -49,9 +49,18 @@ export interface Address {
   returnAddress: string;
 }
 
+export type Side = 'up' | 'down';
+
+// Which face of the package a defect sits on.
+export interface Placement {
+  side: Side;
+  face: number;
+}
+
 export interface Package {
   id: number;
   kind: PackageKind;
+  placements?: Partial<Record<DefectId, Placement>>;
   defects: DefectId[];
   address: Address;
   declaredWeightKg: number;
@@ -64,6 +73,8 @@ export interface Handling {
   opened: boolean; // the box is open: the inside view
   flipped: boolean; // the other side is showing: the back view
   fined: boolean; // the opening fine was already charged for this package
+  face: number; // index of the face showing on the current side
+  visited: string[]; // face keys the player has shown (e.g. 'up:0')
   used: InspectionTool[];
   repaired: DefectId[];
   relabeled: boolean;

@@ -52,3 +52,17 @@ describe('repair and inside data', () => {
     ]);
   });
 });
+
+it('lets the new shapes carry only the defects that fit them', () => {
+  const on = (kind: 'prism' | 'tetra') =>
+    ALL_DEFECT_IDS.filter((id) => DEFECTS[id].kinds.includes(kind)).sort();
+  expect(on('prism')).toContain('torn_tape');
+  expect(on('prism')).toContain('crushed_corner');
+  expect(on('prism')).not.toContain('bottomless');
+  expect(on('prism')).not.toContain('wet_cardboard');
+  expect(on('tetra')).toContain('bottomless');
+  expect(on('tetra')).toContain('wet_cardboard');
+  expect(on('tetra')).not.toContain('torn_tape');
+  expect(on('tetra')).not.toContain('crushed_corner');
+  expect(on('tetra')).toContain('missing_label');
+});

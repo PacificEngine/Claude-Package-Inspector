@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DEFECTS } from './defects';
-import { generatePackage } from './packages';
+import { generatePackage, kindsForDay } from './packages';
 import { createRng } from './rng';
 import { ruleCardForDay } from './rules';
+import { faceCount } from './shapes';
 
 const sample = (day: number, n = 400) => {
   const rng = createRng(day * 101);
@@ -63,5 +64,54 @@ describe('generatePackage', () => {
       return pkgs.reduce((sum, p) => sum + p.fee, 0) / pkgs.length;
     };
     expect(avg(7)).toBeGreaterThan(avg(1));
+  });
+});
+
+describe('shapes by day', () => {
+  it('uses the five original kinds on days 1 to 3, adds prisms on day 4 and tetrahedrons on day 6', () => {
+    for (const day of [1, 2, 3]) expect(kindsForDay(day)).toEqual(['box', 'can', 'parcel', 'jar', 'tube']);
+    expect(kindsForDay(4)).toEqual(['box', 'can', 'parcel', 'jar', 'tube', 'prism']);
+    expect(kindsForDay(5)).toContain('prism');
+    expect(kindsForDay(5)).not.toContain('tetra');
+    expect(kindsForDay(6)).toContain('tetra');
+    expect(kindsForDay(7)).toContain('tetra');
+  });
+
+  it('only generates a shape once it is unlocked, and does generate it afterwards', () => {
+    const kinds = (day: number) => new Set(sample(day, 400).map((p) => p.kind));
+    expect(kinds(3).has('prism')).toBe(false);
+    expect(kinds(5).has('tetra')).toBe(false);
+    expect(kinds(4).has('prism')).toBe(true);
+    expect(kinds(6).has('tetra')).toBe(true);
+  });
+});
+
+describe('defect placements', () => {
+  it('places nothing on day 1', () => {
+    for (const p of sample(1, 300)) expect(p.placements).toBeUndefined();
+  });
+
+  it('spreads surface defects over the up faces and underside defects over the down faces from day 2', () => {
+    const surface = ['leaking', 'crushed_corner', 'torn_tape', 'bulging', 'missing_label'];
+    const under = ['bottomless', 'wet_cardboard'];
+    let sawFaceBeyondFirst = false;
+    for (const day of [2, 3, 5, 7]) {
+      for (const p of sample(day, 400)) {
+        for (const id of p.defects) {
+          const placed = p.placements?.[id];
+          if (surface.includes(id)) {
+            expect(placed?.side).toBe('up');
+            expect(placed!.face).toBeLessThan(faceCount(p.kind, 'up'));
+            if (placed!.face > 0) sawFaceBeyondFirst = true;
+          } else if (under.includes(id)) {
+            expect(placed?.side).toBe('down');
+            expect(placed!.face).toBeLessThan(faceCount(p.kind, 'down'));
+          } else {
+            expect(placed).toBeUndefined();
+          }
+        }
+      }
+    }
+    expect(sawFaceBeyondFirst).toBe(true);
   });
 });

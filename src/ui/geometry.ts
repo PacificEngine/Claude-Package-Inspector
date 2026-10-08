@@ -21,7 +21,29 @@ export function bodyRect(kind: PackageKind, w: number, h: number): Rect {
       return { x: w / 2 - 55, y: floor - 110, w: 110, h: 110 };
     case 'tube':
       return { x: w / 2 - 35, y: floor - 150, w: 70, h: 150 };
+    case 'prism':
+      return { x: w / 2 - 90, y: floor - 95, w: 180, h: 95 };
+    case 'tetra':
+      return { x: w / 2 - 75, y: floor - 130, w: 150, h: 130 };
   }
+}
+
+// Where the contents label goes (or is missing). A tetrahedron's is lower, where the triangle is wide.
+export function labelRect(kind: PackageKind, b: Rect): Rect {
+  if (kind === 'tetra') return { x: b.x + b.w * 0.3, y: b.y + b.h * 0.62, w: b.w * 0.4, h: b.h * 0.26 };
+  return { x: b.x + b.w * 0.2, y: b.y + b.h * 0.4, w: b.w * 0.6, h: b.h * 0.3 };
+}
+
+// The hole in a missing bottom. A tetrahedron's is smaller and lower so it fits the triangle.
+export function voidRect(kind: PackageKind, b: Rect): Rect {
+  if (kind === 'tetra') return { x: b.x + b.w * 0.34, y: b.y + b.h * 0.5, w: b.w * 0.32, h: b.h * 0.34 };
+  return { x: b.x + b.w * 0.14, y: b.y + b.h * 0.16, w: b.w * 0.72, h: b.h * 0.68 };
+}
+
+// Where an applied repair patch goes. A tetrahedron's sits lower, where the triangle is wide enough.
+export function patchRect(kind: PackageKind, b: Rect): Rect {
+  if (kind === 'tetra') return { x: b.x + b.w * 0.4, y: b.y + b.h * 0.45, w: b.w * 0.2, h: 14 };
+  return { x: b.x + b.w * 0.1, y: b.y + b.h * 0.1, w: b.w * 0.3, h: 14 };
 }
 
 // The cutaway of the open box: a back wall with the floor near its bottom.

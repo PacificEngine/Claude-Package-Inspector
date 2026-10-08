@@ -3,7 +3,7 @@ import { makePackage } from '../game/testing';
 import type { DefectId, PackageKind } from '../game/types';
 import { CONTENT_ITEMS, contentsFor, describeContents } from './contents';
 
-const KINDS: PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube'];
+const KINDS: PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra'];
 
 describe('contentsFor', () => {
   it('is deterministic for a package', () => {

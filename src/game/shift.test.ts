@@ -12,6 +12,7 @@ import {
   openBox,
   packagesForDay,
   repair,
+  rotateBox,
   stamp,
   startShift,
   type ShiftState,
@@ -243,6 +244,7 @@ describe('inspect with views and notes', () => {
     s = inspect(s, 'shake').state;
     s = inspect(s, 'stethoscope').state;
     expect(currentNotes(s).map((c) => c.key)).toEqual([
+      'shape',
       'scale:none',
       'shake:rattling',
       'stethoscope:none',
@@ -252,7 +254,7 @@ describe('inspect with views and notes', () => {
   it('does not record visual clues until a marker is clicked', () => {
     const leaker = makePackage({ kind: 'can', defects: ['leaking'] });
     const s = inspect(shiftWith([leaker], 3, tools('uv')), 'uv').state;
-    expect(currentNotes(s)).toEqual([]);
+    expect(currentNotes(s).map((c) => c.key)).toEqual(['shape']);
   });
 });
 
@@ -261,7 +263,7 @@ describe('noteDefect', () => {
 
   it('records a visible defect from its front marker', () => {
     const r = noteDefect(shiftWith([leaker]), 'leaking', 'front');
-    expect(currentNotes(r.state).map((c) => c.key)).toEqual(['look:leaking']);
+    expect(currentNotes(r.state).map((c) => c.key)).toEqual(['shape', 'look:leaking']);
     expect(r.message).toBe('A dark drip trails down the side.');
   });
 
@@ -269,13 +271,13 @@ describe('noteDefect', () => {
     const once = noteDefect(shiftWith([leaker]), 'leaking', 'front').state;
     const twice = noteDefect(once, 'leaking', 'front');
     expect(twice.message).toBe('Already noted.');
-    expect(currentNotes(twice.state)).toHaveLength(1);
+    expect(currentNotes(twice.state)).toHaveLength(2);
   });
 
   it('records the inside clue from the inside view', () => {
     const opened = openBox(shiftWith([leaker], 1)).state;
     const r = noteDefect(opened, 'leaking', 'inside');
-    expect(currentNotes(r.state).map((c) => c.key)).toEqual(['inside:leaking']);
+    expect(currentNotes(r.state).map((c) => c.key)).toEqual(['shape', 'inside:leaking']);
   });
 
   it('refuses a marker from a view that is not showing', () => {
@@ -307,5 +309,80 @@ describe('shipping needs a closed box', () => {
     const r = stamp(opened, 'reject');
     expect(r.state.rejected).toBe(1);
     expect(r.state.strikes).toBe(0);
+  });
+});
+
+describe('rotateBox', () => {
+  const cuboid = makePackage({ kind: 'box' });
+  const withRotate = (pkg = cuboid) => shiftWith([pkg], 3, tools('rotate'));
+
+  it('needs the rotate tool', () => {
+    expect(rotateBox(shiftWith([cuboid])).message).toBe('You do not own that tool.');
+  });
+
+  it('is refused while the box is open', () => {
+    expect(rotateBox(openBox(withRotate()).state).message).toBe('Close the box first.');
+  });
+
+  it('turns through the four sides of a cuboid and wraps around', () => {
+    let s = withRotate();
+    const seen: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      s = rotateBox(s).state;
+      seen.push(s.handling.face);
+    }
+    expect(seen).toEqual([1, 2, 3, 0, 1]);
+    expect(s.handling.visited).toEqual(['up:0', 'up:1', 'up:2', 'up:3']);
+  });
+
+  it('says so when a shape has only one side', () => {
+    const can = makePackage({ kind: 'can' });
+    const r = rotateBox(withRotate(can));
+    expect(r.message).toBe('This shape has only one side to turn.');
+    expect(r.state.handling.face).toBe(0);
+  });
+
+  it('turns through three sides on a prism and four on a tetrahedron', () => {
+    let p = withRotate(makePackage({ kind: 'prism' }));
+    p = rotateBox(rotateBox(rotateBox(p).state).state).state;
+    expect(p.handling.face).toBe(0);
+    let t = withRotate(makePackage({ kind: 'tetra' }));
+    for (let i = 0; i < 3; i++) t = rotateBox(t).state;
+    expect(t.handling.face).toBe(3);
+  });
+
+  it('rotates the down faces of a flipped tetrahedron', () => {
+    let t = flipBox(withRotate(makePackage({ kind: 'tetra' }))).state;
+    t = rotateBox(rotateBox(t).state).state;
+    expect(t.handling.face).toBe(2);
+    expect(t.handling.visited).toEqual(['up:0', 'down:0', 'down:1', 'down:2']);
+  });
+});
+
+describe('flipBox with faces', () => {
+  it('shows face 1 of the other side and remembers it was seen', () => {
+    let s = shiftWith([makePackage({ kind: 'tetra' })], 6, tools('rotate'));
+    s = rotateBox(rotateBox(s).state).state; // up face 3
+    s = flipBox(s).state;
+    expect(s.handling.flipped).toBe(true);
+    expect(s.handling.face).toBe(0);
+    expect(s.handling.visited).toContain('down:0');
+    s = flipBox(s).state;
+    expect(s.handling.flipped).toBe(false);
+    expect(s.handling.face).toBe(0);
+  });
+
+  it('says underside when turning the down side, and side on the up side', () => {
+    let s = shiftWith([makePackage({ kind: 'tetra' })], 6, tools('rotate'));
+    expect(rotateBox(s).message).toBe('You turn it to side 2 of 4.');
+    s = flipBox(s).state;
+    expect(rotateBox(s).message).toBe('You turn it to underside 2 of 4.');
+  });
+
+  it('refuses a shape with no underside', () => {
+    const s = shiftWith([makePackage({ kind: 'prism' })], 4, tools('rotate'));
+    const r = flipBox(s);
+    expect(r.message).toBe('This shape cannot be flipped.');
+    expect(r.state.handling.flipped).toBe(false);
   });
 });

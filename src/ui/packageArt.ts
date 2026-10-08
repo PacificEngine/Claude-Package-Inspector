@@ -1,9 +1,10 @@
-import { viewOf } from '../game/handling';
+import { sideOf, viewOf } from '../game/handling';
 import { visibleDefects } from '../game/inspection';
+import { faceCount } from '../game/shapes';
 import type { DefectId, Handling, Package, PackageKind } from '../game/types';
 import type { PackageAction } from './animation';
 import { contentsFor, type Contents, type ContentsItem } from './contents';
-import { bodyRect, insideLayout, type Rect } from './geometry';
+import { bodyRect, insideLayout, labelRect, patchRect, voidRect, type Rect } from './geometry';
 
 const BODY_COLOR: Record<PackageKind, string> = {
   box: '#c9a26b',
@@ -11,6 +12,8 @@ const BODY_COLOR: Record<PackageKind, string> = {
   can: '#9aa7b1',
   jar: '#a8d0c7',
   tube: '#d99aa0',
+  prism: '#b9a0d8',
+  tetra: '#9cc7a3',
 };
 
 const MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Rect) => void>> = {
@@ -86,7 +89,7 @@ export interface Motion {
 
 const REST: Motion = { action: null, progress: 1 };
 
-const flat = (kind: PackageKind): boolean => kind === 'box' || kind === 'parcel';
+const flat = (kind: PackageKind): boolean => kind === 'box' || kind === 'parcel' || kind === 'prism';
 const ease = (t: number): number => 1 - (1 - t) * (1 - t);
 
 function darken(hex: string, factor: number): string {
@@ -104,7 +107,12 @@ function drawBelt(ctx: CanvasRenderingContext2D, width: number, height: number):
 
 function bodyPath(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect): void {
   ctx.beginPath();
-  if (flat(pkg.kind)) ctx.rect(b.x, b.y, b.w, b.h);
+  if (pkg.kind === 'tetra') {
+    ctx.moveTo(b.x + b.w / 2, b.y);
+    ctx.lineTo(b.x + b.w, b.y + b.h);
+    ctx.lineTo(b.x, b.y + b.h);
+    ctx.closePath();
+  } else if (flat(pkg.kind)) ctx.rect(b.x, b.y, b.w, b.h);
   else ctx.roundRect(b.x, b.y, b.w, b.h, 18);
 }
 
@@ -270,21 +278,52 @@ function drawExtraBehind(ctx: CanvasRenderingContext2D, extra: Contents['extras'
   }
 }
 
+// A triangular prism lying on its side: a ridge along the top and a darker triangular end.
+function drawPrismLook(ctx: CanvasRenderingContext2D, b: Rect): void {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+  ctx.fillRect(b.x, b.y, b.w, 10);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(b.x, b.y + 10);
+  ctx.lineTo(b.x + b.w, b.y + 10);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+  ctx.beginPath();
+  ctx.moveTo(b.x + b.w - 28, b.y + b.h);
+  ctx.lineTo(b.x + b.w, b.y + b.h);
+  ctx.lineTo(b.x + b.w, b.y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawCaption(ctx: CanvasRenderingContext2D, pkg: Package, handling: Handling): void {
+  const count = faceCount(pkg.kind, sideOf(handling));
+  if (count <= 1 && !handling.flipped) return; // a one-face front needs no caption
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  const word = handling.flipped ? 'Underside' : 'Side';
+  ctx.fillText(count > 1 ? `${word} ${handling.face + 1} of ${count}` : word, 10, 16);
+}
+
 // ---- front ----------------------------------------------------------------------
 
 function drawFront(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling: Handling): void {
   const visible = visibleDefects(pkg, handling, 'front');
-  ctx.fillStyle = BODY_COLOR[pkg.kind];
+  ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 1 - 0.06 * (handling.face % 4));
   bodyPath(ctx, pkg, b);
   ctx.fill();
 
   // Seal tape strip, drawn unless the tape is torn
-  if (flat(pkg.kind) && !visible.includes('torn_tape')) {
+  if ((pkg.kind === 'box' || pkg.kind === 'parcel') && !visible.includes('torn_tape')) {
     ctx.fillStyle = '#b08a52';
     ctx.fillRect(b.x, b.y + 4, b.w, 8);
   }
 
-  const label = { x: b.x + b.w * 0.2, y: b.y + b.h * 0.4, w: b.w * 0.6, h: b.h * 0.3 };
+  if (pkg.kind === 'prism') drawPrismLook(ctx, b);
+
+  const label = labelRect(pkg.kind, b);
   if (visible.includes('missing_label')) {
     // An empty outline where the contents label should be, so the gap is something to point at.
     ctx.save();
@@ -297,8 +336,8 @@ function drawFront(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handlin
     ctx.fillStyle = '#fdfdf5';
     ctx.fillRect(label.x, label.y, label.w, label.h);
     ctx.fillStyle = '#718096';
-    ctx.fillRect(b.x + b.w * 0.25, b.y + b.h * 0.47, b.w * 0.5, 3);
-    ctx.fillRect(b.x + b.w * 0.25, b.y + b.h * 0.56, b.w * 0.35, 3);
+    ctx.fillRect(label.x + label.w * 0.1, label.y + label.h * 0.3, label.w * 0.8, 3);
+    ctx.fillRect(label.x + label.w * 0.1, label.y + label.h * 0.65, label.w * 0.55, 3);
   }
 
   for (const id of visible) MARKS[id]?.(ctx, b);
@@ -306,17 +345,20 @@ function drawFront(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handlin
   // Applied repairs show as a duct-tape patch
   if (handling.repaired.length > 0) {
     ctx.fillStyle = '#9aa0a6';
-    ctx.fillRect(b.x + b.w * 0.1, b.y + b.h * 0.1, b.w * 0.3, 14);
+    const patch = patchRect(pkg.kind, b);
+    ctx.fillRect(patch.x, patch.y, patch.w, patch.h);
   }
+  drawCaption(ctx, pkg, handling);
 }
 
 // ---- back -----------------------------------------------------------------------
 
-const BACK_MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Rect) => void>> = {
-  bottomless: (ctx, b) => {
+const BACK_MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Rect, kind: PackageKind) => void>> = {
+  bottomless: (ctx, b, kind) => {
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.ellipse(b.x + b.w / 2, b.y + b.h / 2, b.w * 0.36, b.h * 0.34, 0, 0, Math.PI * 2);
+    const r = voidRect(kind, b); // a tetrahedron's void stays inside its triangle
+    ctx.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2, r.h / 2, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#1a1a2e';
     ctx.lineWidth = 4;
@@ -347,12 +389,22 @@ const BACK_MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Re
 
 function drawBack(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling: Handling): void {
   const visible = visibleDefects(pkg, handling, 'back');
-  ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 0.72);
+  ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 0.72 - 0.05 * (handling.face % 4));
   bodyPath(ctx, pkg, b);
   ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.25)';
   ctx.lineWidth = 3;
-  ctx.strokeRect(b.x + 8, b.y + 8, b.w - 16, b.h - 16);
+  ctx.save();
+  bodyPath(ctx, pkg, b); // keep the tape inside a triangle's outline
+  ctx.clip();
+  if (pkg.kind === 'tetra') {
+    ctx.beginPath();
+    ctx.moveTo(b.x + b.w / 2, b.y + 22);
+    ctx.lineTo(b.x + b.w - 18, b.y + b.h - 8);
+    ctx.lineTo(b.x + 18, b.y + b.h - 8);
+    ctx.closePath();
+    ctx.stroke();
+  } else ctx.strokeRect(b.x + 8, b.y + 8, b.w - 16, b.h - 16);
 
   // A sealed bottom has a tape cross; a missing one has a void instead.
   if (!visible.includes('bottomless')) {
@@ -360,15 +412,13 @@ function drawBack(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling
     ctx.fillRect(b.x, b.y + b.h / 2 - 5, b.w, 10);
     ctx.fillRect(b.x + b.w / 2 - 5, b.y, 10, b.h);
   }
-  for (const id of visible) BACK_MARKS[id]?.(ctx, b);
+  for (const id of visible) BACK_MARKS[id]?.(ctx, b, pkg.kind);
   if (handling.repaired.length > 0) {
     ctx.fillStyle = '#9aa0a6';
     ctx.fillRect(b.x + b.w * 0.2, b.y + b.h * 0.2, b.w * 0.6, 12);
   }
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-  ctx.font = '12px system-ui, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('Other side', 10, 16);
+  ctx.restore(); // the back marks and patch stay inside the body outline
+  drawCaption(ctx, pkg, handling);
 }
 
 // ---- inside ---------------------------------------------------------------------
@@ -558,12 +608,13 @@ function drawShakeLines(ctx: CanvasRenderingContext2D, b: Rect, p: number): void
   }
 }
 
-function drawRepairFlash(ctx: CanvasRenderingContext2D, b: Rect, p: number): void {
+function drawRepairFlash(ctx: CanvasRenderingContext2D, kind: PackageKind, b: Rect, p: number): void {
   ctx.save();
   ctx.shadowColor = '#fff';
   ctx.shadowBlur = 24 * (1 - p);
   ctx.fillStyle = `rgba(255,255,255,${0.7 * (1 - p)})`;
-  ctx.fillRect(b.x + b.w * 0.1, b.y + b.h * 0.1, b.w * 0.3, 14);
+  const patch = patchRect(kind, b);
+  ctx.fillRect(patch.x, patch.y, patch.w, patch.h);
   ctx.restore();
 }
 
@@ -611,7 +662,7 @@ export function drawPackage(
       drawShakeLines(ctx, b, p);
       break;
     case 'repair':
-      drawRepairFlash(ctx, b, p);
+      drawRepairFlash(ctx, pkg.kind, b, p);
       break;
     default:
       break;

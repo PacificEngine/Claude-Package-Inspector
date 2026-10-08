@@ -20,6 +20,7 @@ import {
   noteDefect,
   openBox,
   repair,
+  rotateBox,
   stamp,
   type ActionResult,
   type ShiftState,
@@ -40,8 +41,15 @@ import { createSoundControls } from './soundControls';
 import { money } from './money';
 import { drawPackage } from './packageArt';
 import { DEFECTS } from '../game/defects';
-import { viewOf } from '../game/handling';
+import { faceCount } from '../game/shapes';
+import type { Handling, Package } from '../game/types';
+import { sideOf, viewOf } from '../game/handling';
 import { markerNoted, markersFor, type Marker } from './markers';
+
+const rotateLabel = (pkg: Package, h: Handling): string => {
+  const count = faceCount(pkg.kind, sideOf(h));
+  return count > 1 ? `Rotate (${h.face + 1}/${count})` : 'Rotate';
+};
 
 const STAGE_W = 320;
 const STAGE_H = 260;
@@ -169,9 +177,10 @@ export function mount(root: HTMLElement, seed: number): void {
     const noted = currentNotes(s);
     const notes = el('div', { cls: 'panel' }, [
       el('h3', { text: 'Notes' }),
-      noted.length > 0
-        ? el('ul', {}, noted.map((c) => el('li', { text: c.text })))
-        : el('p', { cls: 'muted', text: 'Click a marker on the package to take a note.' }),
+      ...(noted.length > 0 ? [el('ul', {}, noted.map((c) => el('li', { text: c.text })))] : []),
+      ...(noted.length <= 1
+        ? [el('p', { cls: 'muted', text: 'Click a marker on the package to take a note.' })]
+        : []),
     ]);
 
     const tools = INSPECTION_ITEMS.filter(
@@ -182,7 +191,18 @@ export function mount(root: HTMLElement, seed: number): void {
     const inspectRow = el('div', { cls: 'row' }, [
       ...tools.map((t) => button(ITEM_NAMES[t], act((st) => inspect(st, t), t), !faceUp || s.handling.used.includes(t))),
       ...(ownsFlip
-        ? [button(view === 'back' ? 'Flip box back' : 'Flip box', act(flipBox), view === 'inside')]
+        ? [
+            button(
+              rotateLabel(pkg, s.handling),
+              act(rotateBox),
+              view === 'inside' || faceCount(pkg.kind, sideOf(s.handling)) <= 1,
+            ),
+            button(
+              view === 'back' ? 'Flip box back' : 'Flip box',
+              act(flipBox),
+              view === 'inside' || (view === 'front' && faceCount(pkg.kind, 'down') === 0),
+            ),
+          ]
         : []),
       ...(tools.length === 0 && !ownsFlip ? [el('span', { cls: 'muted', text: 'No inspection tools yet.' })] : []),
     ]);

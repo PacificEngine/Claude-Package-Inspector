@@ -4,8 +4,8 @@ import { openingFine } from './economy';
 import { newHandling, viewOf } from './handling';
 import { CLUE_CHANNEL, cluesFor, markerClues, notedClues, type Clue } from './inspection';
 import { generatePackage } from './packages';
-import { createRng } from './rng';
 import { applyRepair } from './repair';
+import { createRng } from './rng';
 import {
   isCorrectVerdict,
   needsOpening,
@@ -13,6 +13,7 @@ import {
   unresolvedProblems,
   type RuleCard,
 } from './rules';
+import { faceCount, faceKey } from './shapes';
 import type {
   AddressIssue,
   DefectId,
@@ -21,6 +22,7 @@ import type {
   Inventory,
   Package,
   RepairTool,
+  Side,
   Verdict,
   View,
 } from './types';
@@ -94,14 +96,50 @@ export function closeBox(s: ShiftState): ActionResult {
   return { state: { ...s, handling: { ...s.handling, opened: false } }, message: 'Box closed.' };
 }
 
-export function flipBox(s: ShiftState): ActionResult {
-  if (!currentPackage(s)) return idle(s);
+const withVisited = (visited: string[], side: Side, face: number): string[] => {
+  const key = faceKey(side, face);
+  return visited.includes(key) ? visited : [...visited, key];
+};
+
+export function rotateBox(s: ShiftState): ActionResult {
+  const pkg = currentPackage(s);
+  if (!pkg) return idle(s);
   if (!s.inventory.tools.includes('rotate')) return { state: s, message: 'You do not own that tool.' };
   if (s.handling.opened) return { state: s, message: 'Close the box first.' };
+  const side: Side = s.handling.flipped ? 'down' : 'up';
+  const count = faceCount(pkg.kind, side);
+  if (count <= 1) return { state: s, message: 'This shape has only one side to turn.' };
+  const face = (s.handling.face + 1) % count;
+  return {
+    state: {
+      ...s,
+      handling: { ...s.handling, face, visited: withVisited(s.handling.visited, side, face) },
+    },
+    message: `You turn it to ${side === 'down' ? 'underside' : 'side'} ${face + 1} of ${count}.`,
+  };
+}
+
+export function flipBox(s: ShiftState): ActionResult {
+  const pkg = currentPackage(s);
+  if (!pkg) return idle(s);
+  if (!s.inventory.tools.includes('rotate')) return { state: s, message: 'You do not own that tool.' };
+  if (s.handling.opened) return { state: s, message: 'Close the box first.' };
+  if (!s.handling.flipped && faceCount(pkg.kind, 'down') === 0) {
+    return { state: s, message: 'This shape cannot be flipped.' };
+  }
   const flipped = !s.handling.flipped;
   const used = s.handling.used.includes('rotate') ? s.handling.used : [...s.handling.used, 'rotate' as const];
   return {
-    state: { ...s, handling: { ...s.handling, flipped, used } },
+    state: {
+      ...s,
+      handling: {
+        ...s.handling,
+        flipped,
+        face: 0,
+        used,
+        visited: withVisited(s.handling.visited, flipped ? 'down' : 'up', 0),
+      },
+    },
     message: flipped ? 'You flip the box over.' : 'You turn the box back over.',
   };
 }

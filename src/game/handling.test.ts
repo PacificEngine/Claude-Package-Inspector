@@ -13,6 +13,9 @@ describe('newHandling', () => {
       repaired: [],
       relabeled: false,
       notes: ['shape'],
+      discarded: [],
+      sealed: [],
+      labelItems: null,
     });
   });
 });

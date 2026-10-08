@@ -4,6 +4,7 @@ import {
   CLUE_CHANNEL,
   cluesFor,
   insideCluesFor,
+  itemCluesFor,
   markerClues,
   notedClues,
   revealedDefects,
@@ -246,5 +247,54 @@ describe('faces', () => {
         text: 'Shape: triangular prism. Three sides to rotate; it cannot be flipped.',
       },
     ]);
+  });
+});
+
+describe('item clues', () => {
+  const p = makePackage({
+    packagingKg: 0.5,
+    declaredWeightKg: 0.9,
+    actualWeightKg: 0.9,
+    contents: [
+      { id: 1, name: 'teapot', art: 'teapot', color: '#c05a5a', weightKg: 0.4, leaking: true },
+      { id: 2, name: 'brick', art: 'book', color: '#9b6a5a', weightKg: 0, extra: true },
+    ],
+  });
+
+  it('describes each remaining item and each unsealed leak', () => {
+    expect(itemCluesFor(p, newHandling()).map((c) => [c.key, c.text])).toEqual([
+      ['item:1', 'The teapot weighs 0.4 kg.'],
+      ['leak:1', 'The teapot is leaking.'],
+      ['item:2', 'The brick weighs 0 kg.'],
+    ]);
+  });
+
+  it('drops thrown-away items and sealed leaks', () => {
+    const h = { ...newHandling(), discarded: [2], sealed: [1] };
+    expect(itemCluesFor(p, h).map((c) => c.key)).toEqual(['item:1']);
+  });
+
+  it('keeps recorded item notes in the notes list and drops them when the item is thrown away', () => {
+    const h = { ...newHandling(), notes: ['shape', 'item:2', 'leak:1'] };
+    expect(notedClues(p, h).map((c) => c.key)).toEqual(['shape', 'item:2', 'leak:1']);
+    expect(notedClues(p, { ...h, discarded: [2] }).map((c) => c.key)).toEqual(['shape', 'leak:1']);
+  });
+
+  it('reads the scale after what has been thrown away', () => {
+    const heavy = makePackage({ declaredWeightKg: 1, actualWeightKg: 2, contents: [
+      { id: 1, name: 'a', art: 'dome', color: '#fff', weightKg: 1 },
+      { id: 2, name: 'b', art: 'dome', color: '#fff', weightKg: 1, extra: true },
+    ] });
+    expect(cluesFor(heavy, 'scale', [], [2])[0].text).toBe('Scale reads 1 kg (label says 1 kg).');
+  });
+
+  it('stops reporting the scale disagreement once the stowaway is thrown away', () => {
+    const pkg = makePackage({ declaredWeightKg: 1, actualWeightKg: 2, defects: ['wrong_weight'], contents: [
+      { id: 1, name: 'a', art: 'dome', color: '#fff', weightKg: 1 },
+      { id: 2, name: 'b', art: 'dome', color: '#fff', weightKg: 1, extra: true },
+    ] });
+    const texts = (discarded: number[]) => cluesFor(pkg, 'scale', [], discarded).map((c) => c.text);
+    expect(texts([])).toContain('The scale disagrees with the label.');
+    expect(texts([2])).not.toContain('The scale disagrees with the label.');
   });
 });

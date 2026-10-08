@@ -15,13 +15,16 @@ import {
   closeBox,
   currentNotes,
   currentPackage,
+  discardItem,
   flipBox,
   inspect,
   noteDefect,
+  noteLeak,
   openBox,
   repair,
   rotateBox,
   stamp,
+  weighItem,
   type ActionResult,
   type ShiftState,
 } from '../game/shift';
@@ -35,7 +38,6 @@ import {
   type PurchasableTool,
 } from '../game/shop';
 import { animationProgress, type PackageAction } from './animation';
-import { contentsFor } from './contents';
 import { button, el } from './dom';
 import { createSoundControls } from './soundControls';
 import { money } from './money';
@@ -44,11 +46,21 @@ import { DEFECTS } from '../game/defects';
 import { faceCount } from '../game/shapes';
 import type { Handling, Package } from '../game/types';
 import { sideOf, viewOf } from '../game/handling';
-import { markerNoted, markersFor, type Marker } from './markers';
+import { itemsIn, legitItemIds } from '../game/contents';
+import { itemMarkersFor, markerNoted, markersFor } from './markers';
+import type { Rect } from './geometry';
 
 const rotateLabel = (pkg: Package, h: Handling): string => {
   const count = faceCount(pkg.kind, sideOf(h));
   return count > 1 ? `Rotate (${h.face + 1}/${count})` : 'Rotate';
+};
+
+// What the contents label says is inside: nothing while it is missing, else what it was printed for.
+const labelText = (pkg: Package, h: Handling): string => {
+  if (pkg.defects.includes('missing_label') && !h.repaired.includes('missing_label')) return '(missing)';
+  const ids = h.labelItems ?? legitItemIds(pkg);
+  const names = ids.map((id) => pkg.contents.find((i) => i.id === id)?.name).filter(Boolean);
+  return names.length > 0 ? names.join(', ') : '(none)';
 };
 
 const STAGE_W = 320;
@@ -62,6 +74,12 @@ function safeStorage(): Storage | null {
   } catch {
     return null; // blocked by browser privacy settings
   }
+}
+
+// Rows repeat the same button text, so each needs a name that says which item it acts on.
+function labelled(b: HTMLButtonElement, label: string): HTMLButtonElement {
+  b.setAttribute('aria-label', label);
+  return b;
 }
 
 export function mount(root: HTMLElement, seed: number): void {
@@ -150,28 +168,49 @@ export function mount(root: HTMLElement, seed: number): void {
 
     // Each marker is a real button over the drawing: click to take a note, Tab to reach it.
     // Largest first, so smaller, more specific markers come later in the DOM and sit on top, still clickable.
-    const byAreaDescending = (a: Marker, b: Marker): number => b.rect.w * b.rect.h - a.rect.w * a.rect.h;
-    const markerButtons = markersFor(pkg, s.handling, STAGE_W, STAGE_H)
-      .sort(byAreaDescending)
-      .map((m) => {
-        const noted = markerNoted(pkg, s.handling, m);
-        const b = button('', act((st) => noteDefect(st, m.defect, m.view)), false, noted ? 'marker noted' : 'marker');
-        b.setAttribute('aria-label', `${noted ? 'Noted' : 'Take a note'}: ${DEFECTS[m.defect].label}`);
-        b.style.left = `${(m.rect.x / STAGE_W) * 100}%`;
-        b.style.top = `${(m.rect.y / STAGE_H) * 100}%`;
-        b.style.width = `${(m.rect.w / STAGE_W) * 100}%`;
-        b.style.height = `${(m.rect.h / STAGE_H) * 100}%`;
-        return b;
-      });
+    const placed = (b: HTMLButtonElement, rect: Rect): HTMLButtonElement => {
+      b.style.left = `${(rect.x / STAGE_W) * 100}%`;
+      b.style.top = `${(rect.y / STAGE_H) * 100}%`;
+      b.style.width = `${(rect.w / STAGE_W) * 100}%`;
+      b.style.height = `${(rect.h / STAGE_H) * 100}%`;
+      return b;
+    };
+    const defectMarkers = markersFor(pkg, s.handling, STAGE_W, STAGE_H).map((m) => {
+      const noted = markerNoted(pkg, s.handling, m);
+      const b = button('', act((st) => noteDefect(st, m.defect, m.view)), false, noted ? 'marker noted' : 'marker');
+      b.setAttribute('aria-label', `${noted ? 'Noted' : 'Take a note'}: ${DEFECTS[m.defect].label}`);
+      return { rect: m.rect, button: placed(b, m.rect) };
+    });
+    const leakMarkers = itemMarkersFor(pkg, s.handling, STAGE_W, STAGE_H).map((m) => {
+      const noted = s.handling.notes.includes(`leak:${m.itemId}`);
+      const name = pkg.contents.find((i) => i.id === m.itemId)?.name ?? 'item';
+      const b = button('', act((st) => noteLeak(st, m.itemId)), false, noted ? 'marker noted' : 'marker');
+      b.setAttribute('aria-label', `${noted ? 'Noted' : 'Take a note'}: leaking ${name}`);
+      return { rect: m.rect, button: placed(b, m.rect) };
+    });
+    const markerButtons = [...defectMarkers, ...leakMarkers]
+      .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h)
+      .map((m) => m.button);
     const stage = el('div', { cls: 'stage' }, [canvas, ...markerButtons]);
 
     const label = el('div', { cls: 'label-card' }, [
       ...addressLines(pkg.address).map((line) => el('div', { text: line })),
       el('div', { text: `Declared weight: ${pkg.declaredWeightKg} kg` }),
+      el('div', { text: `Contents: ${labelText(pkg, s.handling)}` }),
     ]);
+    const ownsScale = s.inventory.tools.includes('scale');
     const inside =
       view === 'inside'
-        ? [el('p', { cls: 'inside', text: `Inside: ${contentsFor(pkg, s.handling.repaired).item.name}` })]
+        ? [
+            el('ul', { cls: 'contents' }, itemsIn(pkg, s.handling).map((item) => {
+              const weighed = s.handling.notes.includes(`item:${item.id}`);
+              return el('li', {}, [
+                el('span', { text: `${item.name}: ${weighed ? `${item.weightKg} kg` : '?'}` }),
+                ...(ownsScale ? [labelled(button('Weigh', act((st) => weighItem(st, item.id))), `Weigh the ${item.name}`)] : []),
+                labelled(button('Throw away', act((st) => discardItem(st, item.id))), `Throw away the ${item.name}`),
+              ]);
+            })),
+          ]
         : [];
 
     const noted = currentNotes(s);

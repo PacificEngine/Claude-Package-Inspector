@@ -57,3 +57,31 @@ export function insideLayout(width: number, height: number): InsideLayout {
   const wall = { x: 24, y: 20, w: width - 48, h: height - 40 };
   return { wall, floorY: wall.y + wall.h - 36, cx: width / 2 };
 }
+
+export interface ItemSlot {
+  cx: number;
+  scale: number;
+  rect: Rect;
+}
+
+const MAX_SCALE = 1.5;
+// Roughly how wide an item is drawn at scale 1.
+const DRAWN_WIDTH_AT_SCALE_1 = 52;
+
+// Items stand side by side on the floor of the cutaway, scaled down until each fits its slot.
+export function itemSlots(count: number, width: number, height: number): ItemSlot[] {
+  if (count === 0) return [];
+  const { wall, floorY, cx } = insideLayout(width, height);
+  const gap = Math.min(80 * MAX_SCALE, (wall.w - 16) / count);
+  const scale = Math.min(MAX_SCALE, gap / DRAWN_WIDTH_AT_SCALE_1);
+  const left = cx - (gap * (count - 1)) / 2;
+  const top = Math.max(wall.y + 24, floorY - 70 * scale);
+  return Array.from({ length: count }, (_, i) => {
+    const x = left + i * gap;
+    return {
+      cx: x,
+      scale,
+      rect: { x: x - gap / 2, y: top, w: gap, h: floorY + 30 - top },
+    };
+  });
+}

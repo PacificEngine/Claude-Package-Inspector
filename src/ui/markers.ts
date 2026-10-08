@@ -1,7 +1,8 @@
+import { itemsIn } from '../game/contents';
 import { viewOf } from '../game/handling';
 import { markerClues, visibleDefects } from '../game/inspection';
 import type { DefectId, Handling, Package, PackageKind, View } from '../game/types';
-import { bodyRect, insideLayout, labelRect, voidRect, type InsideLayout, type Rect } from './geometry';
+import { bodyRect, insideLayout, itemSlots, labelRect, voidRect, type InsideLayout, type Rect } from './geometry';
 
 export interface Marker {
   defect: DefectId;
@@ -62,4 +63,19 @@ export function markersFor(pkg: Package, handling: Handling, width: number, heig
 export function markerNoted(pkg: Package, handling: Handling, marker: Marker): boolean {
   const clues = markerClues(pkg, handling, marker.defect, marker.view);
   return clues.length > 0 && clues.every((c) => handling.notes.includes(c.key));
+}
+
+export interface ItemMarker {
+  itemId: number;
+  rect: Rect;
+}
+
+// A leaking item that has not been sealed gets a marker on the inside screen.
+export function itemMarkersFor(pkg: Package, handling: Handling, width: number, height: number): ItemMarker[] {
+  if (viewOf(handling) !== 'inside') return [];
+  const items = itemsIn(pkg, handling);
+  const slots = itemSlots(items.length, width, height);
+  return items.flatMap((item, i) =>
+    item.leaking && !handling.sealed.includes(item.id) ? [{ itemId: item.id, rect: slots[i].rect }] : [],
+  );
 }

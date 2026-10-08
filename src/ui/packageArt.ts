@@ -3,8 +3,8 @@ import { visibleDefects } from '../game/inspection';
 import { faceCount } from '../game/shapes';
 import type { DefectId, Handling, Package, PackageKind } from '../game/types';
 import type { PackageAction } from './animation';
-import { contentsFor, type Contents, type ContentsItem } from './contents';
-import { bodyRect, insideLayout, labelRect, patchRect, voidRect, type Rect } from './geometry';
+import { contentsFor, type Contents, type ContentsArt } from './contents';
+import { bodyRect, insideLayout, itemSlots, labelRect, patchRect, voidRect, type Rect } from './geometry';
 
 const BODY_COLOR: Record<PackageKind, string> = {
   box: '#c9a26b',
@@ -118,7 +118,7 @@ function bodyPath(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect): void {
 
 // ---- contents ----------------------------------------------------------------
 
-function drawItem(ctx: CanvasRenderingContext2D, item: ContentsItem, cx: number, base: number): void {
+function drawItem(ctx: CanvasRenderingContext2D, item: { art: ContentsArt; color: string }, cx: number, base: number): void {
   ctx.fillStyle = item.color;
   switch (item.art) {
     case 'dome':
@@ -423,6 +423,20 @@ function drawBack(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling
 
 // ---- inside ---------------------------------------------------------------------
 
+function drawDrips(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = '#3b82c4';
+  for (const [x, y] of [[-14, 6], [0, 12], [14, 5]]) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, 4, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawSealPatch(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = '#9aa0a6';
+  ctx.fillRect(-16, -26, 32, 10);
+}
+
 function drawInsideScreen(
   ctx: CanvasRenderingContext2D,
   pkg: Package,
@@ -431,7 +445,7 @@ function drawInsideScreen(
   height: number,
 ): void {
   const { wall, floorY, cx } = insideLayout(width, height);
-  const contents = contentsFor(pkg, handling.repaired);
+  const contents = contentsFor(pkg, handling);
   const base = BODY_COLOR[pkg.kind];
   const wallPath = (): void => {
     ctx.beginPath();
@@ -454,11 +468,21 @@ function drawInsideScreen(
   ctx.stroke();
 
   const hasVoid = contents.extras.includes('void');
-  // The contents are drawn bigger than on the belt; a bottomless box swallows them.
+  const slots = itemSlots(contents.items.length, width, height);
+  // The items are drawn bigger than on the belt; a bottomless box swallows them.
+  contents.items.forEach((item, i) => {
+    const slot = slots[i];
+    ctx.save();
+    ctx.translate(slot.cx, floorY + (hasVoid ? 10 : 0));
+    ctx.scale(slot.scale, slot.scale);
+    drawItem(ctx, item, 0, 0);
+    if (item.leaking && !handling.sealed.includes(item.id)) drawDrips(ctx);
+    if (handling.sealed.includes(item.id)) drawSealPatch(ctx);
+    ctx.restore();
+  });
   ctx.save();
   ctx.translate(cx, floorY + (hasVoid ? 10 : 0));
   ctx.scale(1.7, 1.7);
-  drawItem(ctx, contents.item, 0, 0);
   for (const extra of contents.extras) drawExtraBehind(ctx, extra, 0, 0);
   ctx.restore();
 

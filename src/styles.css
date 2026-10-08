@@ -20,7 +20,10 @@ canvas { background: #20242c; border-radius: 8px; width: 100%; max-width: 320px;
 .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 select { background: #3a4150; color: inherit; border: 0; padding: 8px 10px; border-radius: 6px; font-size: 14px; }
-.inside { margin: 8px 0 0; color: #f6e05e; }
+.contents { list-style: none; margin: 8px 0 0; padding: 0; color: #f6e05e; }
+.contents li { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.contents li span { flex: 1; }
+.contents button { padding: 4px 8px; font-size: 12px; }
 
 .stage { position: relative; width: 100%; max-width: 320px; }
 .stage canvas { display: block; }

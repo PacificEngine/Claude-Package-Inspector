@@ -115,3 +115,68 @@ describe('defect placements', () => {
     expect(sawFaceBeyondFirst).toBe(true);
   });
 });
+
+describe('package contents', () => {
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  const legit = (p: ReturnType<typeof sample>[number]) => p.contents.filter((i) => !i.extra);
+
+  it('every package holds at least one legit item, with unique ids and positive weights', () => {
+    for (const day of [1, 3, 5, 7]) {
+      for (const p of sample(day, 200)) {
+        expect(legit(p).length).toBeGreaterThanOrEqual(1);
+        expect(new Set(p.contents.map((i) => i.id)).size).toBe(p.contents.length);
+        for (const i of p.contents) expect(i.weightKg).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('adds up: declared counts the legit items, actual counts everything', () => {
+    for (const p of sample(7, 400)) {
+      const declared = round1(p.packagingKg + legit(p).reduce((s, i) => s + i.weightKg, 0));
+      const actual = round1(p.packagingKg + p.contents.reduce((s, i) => s + i.weightKg, 0));
+      expect(p.declaredWeightKg).toBeCloseTo(declared, 1);
+      expect(p.actualWeightKg).toBeCloseTo(actual, 1);
+    }
+  });
+
+  it('gives wrong-weight packages one or two stowaways that weigh the difference', () => {
+    let seen = 0;
+    for (const p of sample(4, 600)) {
+      if (!p.defects.includes('wrong_weight') || p.defects.includes('heavier_inside')) continue;
+      seen++;
+      const extras = p.contents.filter((i) => i.extra);
+      expect(extras.length).toBeGreaterThanOrEqual(1);
+      expect(extras.length).toBeLessThanOrEqual(2);
+      expect(extras.reduce((s, i) => s + i.weightKg, 0)).toBeCloseTo(p.actualWeightKg - p.declaredWeightKg, 1);
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('gives a heavier-inside package one marble and no other extras', () => {
+    let seen = 0;
+    for (const p of sample(7, 800)) {
+      if (!p.defects.includes('heavier_inside')) continue;
+      seen++;
+      const extras = p.contents.filter((i) => i.extra);
+      expect(extras.some((i) => i.name === 'impossibly dense marble')).toBe(true);
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('has no extras on packages without a weight defect, and leaks only with soggy cardboard', () => {
+    let leakers = 0;
+    for (const day of [2, 4, 7]) {
+      for (const p of sample(day, 600)) {
+        const weightDefect = p.defects.includes('wrong_weight') || p.defects.includes('heavier_inside');
+        if (!weightDefect) expect(p.contents.some((i) => i.extra)).toBe(false);
+        const leaking = p.contents.filter((i) => i.leaking);
+        if (leaking.length > 0) {
+          leakers++;
+          expect(p.defects).toContain('wet_cardboard');
+          expect(leaking.every((i) => !i.extra)).toBe(true);
+        }
+      }
+    }
+    expect(leakers).toBeGreaterThan(0);
+  });
+});

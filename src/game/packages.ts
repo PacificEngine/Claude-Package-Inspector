@@ -1,4 +1,5 @@
 import { generateAddress } from './address';
+import { CATALOG, MARBLE, PACKAGING_KG, STOWAWAYS, round1, type Item } from './contents';
 import { DEFECTS } from './defects';
 import type { Rng } from './rng';
 import type { RuleCard } from './rules';
@@ -26,17 +27,39 @@ function placeDefects(rng: Rng, kind: PackageKind, defects: DefectId[], day: num
   return Object.keys(placements).length > 0 ? placements : undefined;
 }
 
-const BASE_WEIGHT_KG: Record<PackageKind, number> = {
-  box: 2.5,
-  can: 0.4,
-  parcel: 1.2,
-  jar: 0.6,
-  tube: 0.3,
-  prism: 1.0,
-  tetra: 0.8,
-};
+// One to three distinct catalog items (one or two for cylinders), each a little heavier or lighter.
+function legitItems(rng: Rng, kind: PackageKind): Item[] {
+  const pool = [...CATALOG[kind]];
+  const cylinder = kind === 'can' || kind === 'jar' || kind === 'tube';
+  const count = 1 + rng.int(cylinder ? 2 : 3);
+  const items: Item[] = [];
+  for (let i = 0; i < count; i++) {
+    const [pick] = pool.splice(rng.int(pool.length), 1);
+    items.push({
+      id: i + 1,
+      name: pick.name,
+      art: pick.art,
+      color: pick.color,
+      weightKg: round1(pick.baseKg + rng.int(3) / 10),
+    });
+  }
+  return items;
+}
 
-const round1 = (n: number): number => Math.round(n * 10) / 10;
+// A wrong weight is one or two stowaways that together weigh the difference.
+function stowaways(rng: Rng, firstId: number): Item[] {
+  const excess = round1(0.6 + rng.int(7) / 10);
+  const kinds = [...STOWAWAYS];
+  const take = (weightKg: number, id: number): Item => {
+    const [pick] = kinds.splice(rng.int(kinds.length), 1);
+    return { id, name: pick.name, art: pick.art, color: pick.color, weightKg, extra: true };
+  };
+  if (rng.chance(0.5)) {
+    const first = round1(Math.floor((excess * 10) / 2) / 10);
+    return [take(first, firstId), take(round1(excess - first), firstId + 1)];
+  }
+  return [take(excess, firstId)];
+}
 
 export function generatePackage(rng: Rng, id: number, card: RuleCard): Package {
   const kind = rng.pick(kindsForDay(card.day));
@@ -58,13 +81,25 @@ export function generatePackage(rng: Rng, id: number, card: RuleCard): Package {
   const addressPool = [...card.rejectAddress, ...card.allowedAddress];
   const issue = addressPool.length > 0 && rng.chance(0.3) ? rng.pick(addressPool) : null;
 
-  const declaredWeightKg = round1(BASE_WEIGHT_KG[kind] + rng.int(10) / 10);
-  let actualWeightKg = declaredWeightKg;
+  const items = legitItems(rng, kind);
+  const packagingKg = PACKAGING_KG[kind];
+  const declaredWeightKg = round1(packagingKg + items.reduce((s, i) => s + i.weightKg, 0));
+  const contents: Item[] = [...items];
+  if (defects.includes('wrong_weight')) contents.push(...stowaways(rng, items.length + 1));
   if (defects.includes('heavier_inside')) {
-    actualWeightKg = round1(declaredWeightKg * 6);
-  } else if (defects.includes('wrong_weight')) {
-    actualWeightKg = round1(declaredWeightKg + 0.8 + rng.int(5) / 10);
+    contents.push({
+      id: contents.length + 1,
+      ...MARBLE,
+      weightKg: round1(declaredWeightKg * 5),
+      extra: true,
+    });
   }
+  // Half of the soggy cardboard has a leaking item inside as its cause.
+  if (defects.includes('wet_cardboard') && rng.chance(0.5)) {
+    const victim = rng.int(items.length);
+    contents[victim] = { ...contents[victim], leaking: true };
+  }
+  const actualWeightKg = round1(packagingKg + contents.reduce((s, i) => s + i.weightKg, 0));
 
   return {
     id,
@@ -73,6 +108,8 @@ export function generatePackage(rng: Rng, id: number, card: RuleCard): Package {
     address: generateAddress(rng, issue),
     declaredWeightKg,
     actualWeightKg,
+    contents,
+    packagingKg,
     fee: 15 + card.day * 5 + rng.int(10),
     ...(placements ? { placements } : {}),
   };

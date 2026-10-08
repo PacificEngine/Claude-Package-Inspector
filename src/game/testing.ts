@@ -17,6 +17,8 @@ export function makePackage(over: Partial<Package> = {}): Package {
     declaredWeightKg: 2,
     actualWeightKg: 2,
     fee: 20,
+    contents: [],
+    packagingKg: 0,
     ...over,
   };
 }

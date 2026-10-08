@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { newHandling } from '../game/handling';
 import { makePackage } from '../game/testing';
 import type { DefectId } from '../game/types';
-import { bodyRect, insideLayout, labelRect } from './geometry';
-import { markerNoted, markersFor } from './markers';
+import { bodyRect, insideLayout, itemSlots, labelRect } from './geometry';
+import { itemMarkersFor, markerNoted, markersFor } from './markers';
 
 const W = 320;
 const H = 260;
@@ -120,5 +120,23 @@ describe('new shapes', () => {
         }
       }
     }
+  });
+});
+
+describe('item markers', () => {
+  const leaky = { id: 2, name: 'honey', art: 'dome' as const, color: '#e0a020', weightKg: 0.5, leaking: true };
+  const fine = { id: 1, name: 'pickles', art: 'dome' as const, color: '#6b8e23', weightKg: 0.5 };
+  const pkg = makePackage({ defects: ['wet_cardboard'], contents: [fine, leaky] });
+
+  it('marks only unsealed leaking items, only inside', () => {
+    expect(itemMarkersFor(pkg, front, W, H)).toEqual([]);
+    expect(itemMarkersFor(pkg, open, W, H).map((m) => m.itemId)).toEqual([2]);
+    expect(itemMarkersFor(pkg, { ...open, sealed: [2] }, W, H)).toEqual([]);
+    expect(itemMarkersFor(pkg, { ...open, discarded: [2] }, W, H)).toEqual([]);
+  });
+
+  it('places the marker over the item slot', () => {
+    const [m] = itemMarkersFor(pkg, open, W, H);
+    expect(m.rect).toEqual(itemSlots(2, W, H)[1].rect);
   });
 });

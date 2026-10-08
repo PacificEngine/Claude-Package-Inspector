@@ -11,6 +11,9 @@ export function newHandling(): Handling {
     repaired: [],
     relabeled: false,
     notes: ['shape'], // the shape is always the first note
+    discarded: [],
+    sealed: [],
+    labelItems: null,
   };
 }
 

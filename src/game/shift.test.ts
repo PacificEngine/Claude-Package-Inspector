@@ -4,6 +4,9 @@ import { ruleCardForDay } from './rules';
 import {
   MAX_STRIKES,
   closeBox,
+  discardItem,
+  noteLeak,
+  weighItem,
   currentNotes,
   flipBox,
   currentPackage,
@@ -384,5 +387,72 @@ describe('flipBox with faces', () => {
     const r = flipBox(s);
     expect(r.message).toBe('This shape cannot be flipped.');
     expect(r.state.handling.flipped).toBe(false);
+  });
+});
+
+describe('weighing, throwing away and leaks', () => {
+  const it1 = { id: 1, name: 'teapot', art: 'teapot' as const, color: '#c05a5a', weightKg: 0.6 };
+  const it2 = { id: 2, name: 'brick', art: 'book' as const, color: '#9b6a5a', weightKg: 0.8, extra: true };
+  const leaky = { id: 3, name: 'jar of honey', art: 'dome' as const, color: '#e0a020', weightKg: 0.5, leaking: true };
+  const pkg = makePackage({
+    defects: ['wrong_weight'],
+    packagingKg: 0.5,
+    declaredWeightKg: 1.1,
+    actualWeightKg: 1.9,
+    contents: [it1, it2],
+  });
+  const opened = (p = pkg, inv = tools('scale')) => openBox(shiftWith([p], 4, inv)).state;
+
+  it('weighs an item with the scale and records the reading', () => {
+    const r = weighItem(opened(), 2);
+    expect(r.message).toBe('The brick weighs 0.8 kg.');
+    expect(currentNotes(r.state).map((c) => c.key)).toEqual(['shape', 'item:2']);
+  });
+
+  it('needs the box open, the scale, and a real item to weigh', () => {
+    expect(weighItem(shiftWith([pkg], 4, tools('scale')), 1).message).toBe('Open the box first.');
+    expect(weighItem(opened(pkg, tools()), 1).message).toBe('You do not own that tool.');
+    expect(weighItem(opened(), 99).message).toBe('There is no such item.');
+  });
+
+  it('throws an item away for good and fixes the weight', () => {
+    const r = discardItem(opened(), 2);
+    expect(r.message).toBe('You throw away the brick.');
+    expect(r.state.handling.discarded).toEqual([2]);
+    expect(discardItem(r.state, 2).message).toBe('There is no such item.');
+    expect(discardItem(shiftWith([pkg], 4, tools('scale')), 2).message).toBe('Open the box first.');
+  });
+
+  it('notes a leaking item once, and not one that is sealed or fine', () => {
+    const wet = makePackage({ defects: ['wet_cardboard'], contents: [it1, leaky] });
+    const s = opened(wet);
+    const noted = noteLeak(s, 3);
+    expect(noted.message).toBe('The jar of honey is leaking.');
+    expect(currentNotes(noted.state).map((c) => c.key)).toEqual(['shape', 'leak:3']);
+    expect(noteLeak(noted.state, 3).message).toBe('Already noted.');
+    expect(noteLeak(s, 1).message).toBe('Nothing to note there.');
+    const sealed = { ...s, handling: { ...s.handling, sealed: [3] } };
+    expect(noteLeak(sealed, 3).message).toBe('Nothing to note there.');
+  });
+
+  it('updates the noted scale clues once the stowaway is thrown away', () => {
+    let s = inspect(shiftWith([pkg], 4, tools('scale')), 'scale').state;
+    const before = currentNotes(s);
+    expect(before.map((c) => c.key)).toContain('scale:wrong_weight');
+    expect(before.find((c) => c.key === 'scale:none')?.text).toBe('Scale reads 1.9 kg (label says 1.1 kg).');
+    s = openBox(s).state;
+    s = discardItem(s, 2).state;
+    const after = currentNotes(s);
+    expect(after.map((c) => c.key)).not.toContain('scale:wrong_weight');
+    expect(after.find((c) => c.key === 'scale:none')?.text).toBe('Scale reads 1.1 kg (label says 1.1 kg).');
+  });
+
+  it('lets the player ship a wrong-weight package once the stowaway is gone', () => {
+    let s = opened(pkg);
+    s = discardItem(s, 2).state;
+    s = closeBox(s).state;
+    const r = stamp(s, 'ship');
+    expect(r.state.strikes).toBe(0);
+    expect(r.state.earned).toBe(pkg.fee);
   });
 });

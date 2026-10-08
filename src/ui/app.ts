@@ -1,0 +1,212 @@
+import { addressLines } from '../game/address';
+import { bossNote } from '../game/boss';
+import {
+  buy,
+  endDay,
+  nextDay,
+  startCampaign,
+  toShop,
+  type Campaign,
+} from '../game/campaign';
+import {
+  MAX_STRIKES,
+  currentClues,
+  currentPackage,
+  inspect,
+  openBox,
+  repair,
+  stamp,
+  type ActionResult,
+  type ShiftState,
+} from '../game/shift';
+import {
+  INSPECTION_ITEMS,
+  ITEM_NAMES,
+  PRICES,
+  REPAIR_ITEMS,
+  isInspectionItem,
+  unlockedItems,
+} from '../game/shop';
+import { button, el } from './dom';
+import { money } from './money';
+import { drawPackage } from './packageArt';
+
+const fineText = (fines: number): string => money(fines > 0 ? -fines : 0);
+
+export function mount(root: HTMLElement, seed: number): void {
+  let campaign = startCampaign(seed);
+  let message = '';
+
+  const update = (next: Campaign, msg = ''): void => {
+    campaign = next;
+    message = msg;
+    render();
+  };
+
+  const act = (fn: (s: ShiftState) => ActionResult) => (): void => {
+    const result = fn(campaign.shift!);
+    update({ ...campaign, shift: result.state }, result.message);
+  };
+
+  function shiftScreen(): HTMLElement {
+    const s = campaign.shift!;
+    const pkg = currentPackage(s);
+
+    const hud = el('div', { cls: 'hud' }, [
+      el('span', { text: `Day ${s.day}` }),
+      el('span', { text: `Package ${Math.min(s.index + 1, s.queue.length)}/${s.queue.length}` }),
+      el('span', { text: `Strikes ${s.strikes}/${MAX_STRIKES}` }),
+      el('span', { text: `Earned today ${money(s.earned)}` }),
+      el('span', { text: `Fines ${fineText(s.fines)}` }),
+      el('span', { text: `Bank ${money(campaign.bank)}` }),
+    ]);
+
+    const card = el('div', { cls: 'panel' }, [
+      el('h3', { text: s.card.title }),
+      el('ul', {}, s.card.lines.map((line) => el('li', { text: line }))),
+      el('p', { text: 'Opening a box that needs no repair costs 2x its shipping fee.' }),
+    ]);
+
+    if (!pkg) {
+      return el('div', {}, [
+        hud,
+        card,
+        el('div', { cls: 'panel' }, [
+          el('h2', { text: s.strikes >= MAX_STRIKES ? 'Three strikes. Shift over.' : 'Shift complete.' }),
+          el('p', { text: message, cls: 'message' }),
+          button('Settle up', () => update(endDay(campaign))),
+        ]),
+      ]);
+    }
+
+    const canvas = el('canvas', { attrs: { width: '320', height: '260' } });
+    const ctx = canvas.getContext('2d');
+    if (ctx) drawPackage(ctx, pkg, s.handling);
+
+    const label = el('div', { cls: 'label-card' }, [
+      ...addressLines(pkg.address).map((line) => el('div', { text: line })),
+      el('div', { text: `Declared weight: ${pkg.declaredWeightKg} kg` }),
+    ]);
+
+    const notes = el('div', { cls: 'panel' }, [
+      el('h3', { text: 'Notes' }),
+      el('ul', {}, currentClues(s).map((c) => el('li', { text: c.text }))),
+    ]);
+
+    const owned = INSPECTION_ITEMS.filter((t) => s.inventory.tools.includes(t));
+    const inspectRow = el('div', { cls: 'row' }, [
+      ...owned.map((t) => button(ITEM_NAMES[t], act((st) => inspect(st, t)), s.handling.used.includes(t))),
+      ...(owned.length === 0 ? [el('span', { cls: 'muted', text: 'No inspection tools yet.' })] : []),
+    ]);
+
+    const stocked = REPAIR_ITEMS.filter((t) => s.inventory.supplies[t] > 0);
+    const repairRow = el('div', { cls: 'row' }, [
+      button('Open box', act(openBox), s.handling.opened),
+      ...stocked.map((t) =>
+        button(`${ITEM_NAMES[t]} (${s.inventory.supplies[t]})`, act((st) => repair(st, t))),
+      ),
+    ]);
+
+    const stampRow = el('div', { cls: 'row' }, [
+      button('SHIP', act((st) => stamp(st, 'ship')), false, 'ship'),
+      button('REJECT', act((st) => stamp(st, 'reject')), false, 'reject'),
+    ]);
+
+    return el('div', {}, [
+      hud,
+      el('div', { cls: 'grid' }, [
+        el('div', {}, [canvas, label]),
+        el('div', {}, [
+          card,
+          notes,
+          el('div', { cls: 'panel' }, [
+            el('h3', { text: 'Inspect' }),
+            inspectRow,
+            el('h3', { text: 'Repair' }),
+            repairRow,
+            el('h3', { text: 'Decide' }),
+            stampRow,
+            el('p', { cls: 'message', text: message }),
+          ]),
+        ]),
+      ]),
+    ]);
+  }
+
+  function dayEndScreen(): HTMLElement {
+    const sum = campaign.summary!;
+    const accuracy =
+      sum.stamped === 0
+        ? 'n/a'
+        : `${Math.round((sum.correct / sum.stamped) * 100)}% (${sum.correct}/${sum.stamped})`;
+    const accuracyPercent = sum.stamped === 0 ? 100 : (sum.correct / sum.stamped) * 100;
+    return el('div', { cls: 'panel' }, [
+      el('h2', { text: `Day ${sum.day} complete${sum.failed ? ' (cut short by strikes)' : ''}` }),
+      el('ul', {}, [
+        el('li', { text: `Shipped ${sum.shipped}, rejected ${sum.rejected}` }),
+        el('li', { text: `Strikes: ${sum.strikes}` }),
+        el('li', { text: `Accuracy: ${accuracy}` }),
+        el('li', { text: `Earned: ${money(sum.earned)}` }),
+        el('li', { text: `Fines: ${fineText(sum.fines)}` }),
+        el('li', { text: `Payout: ${money(sum.payout)}` }),
+        el('li', { text: `Bank: ${money(sum.bankAfter)}` }),
+      ]),
+      el('p', { cls: 'boss', text: `Boss: ${bossNote(sum.day, accuracyPercent, sum.failed)}` }),
+      button('Continue', () => update(toShop(campaign))),
+    ]);
+  }
+
+  function shopScreen(): HTMLElement {
+    const rows = unlockedItems(campaign.day).map((item) => {
+      const price = money(PRICES[item]);
+      if (isInspectionItem(item)) {
+        const owned = campaign.inventory.tools.includes(item);
+        return el('div', { cls: 'row' }, [
+          el('span', { text: `${ITEM_NAMES[item]} (one-time, ${price})` }),
+          button(owned ? 'Owned' : 'Buy', () => {
+            const r = buy(campaign, item);
+            update(r.campaign, r.message);
+          }, owned),
+        ]);
+      }
+      const have = campaign.inventory.supplies[item];
+      return el('div', { cls: 'row' }, [
+        el('span', { text: `${ITEM_NAMES[item]} (${price} each, you have ${have})` }),
+        ...[1, 5].map((qty) =>
+          button(`Buy ${qty}`, () => {
+            const r = buy(campaign, item, qty);
+            update(r.campaign, r.message);
+          }),
+        ),
+      ]);
+    });
+
+    return el('div', { cls: 'panel' }, [
+      el('h2', { text: 'Supply Shop' }),
+      el('p', { text: `Bank: ${money(campaign.bank)}` }),
+      ...rows,
+      el('p', { cls: 'message', text: message }),
+      button(`Start day ${campaign.day + 1}`, () => update(nextDay(campaign))),
+    ]);
+  }
+
+  function finishedScreen(): HTMLElement {
+    return el('div', { cls: 'panel' }, [
+      el('h2', { text: 'Campaign complete!' }),
+      el('p', { text: `Final bank: ${money(campaign.bank)}` }),
+      button('Play again', () => update(startCampaign(Math.floor(Math.random() * 100000)))),
+    ]);
+  }
+
+  function render(): void {
+    const screens = {
+      shift: shiftScreen,
+      dayEnd: dayEndScreen,
+      shop: shopScreen,
+      finished: finishedScreen,
+    };
+    root.replaceChildren(el('h1', { text: 'PackInspect' }), screens[campaign.phase]());
+  }
+
+  render();
+}

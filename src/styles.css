@@ -1,0 +1,18 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #1a1d23; color: #e8e8ea; }
+#app { max-width: 980px; margin: 0 auto; padding: 16px; }
+h1, h2, h3 { margin: 0 0 8px; }
+.hud { display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 12px; background: #262a33; border-radius: 8px; margin-bottom: 12px; }
+.grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; }
+.panel { background: #262a33; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.panel ul { margin: 0; padding-left: 18px; }
+.label-card { background: #fdfdf5; color: #222; padding: 10px; border-radius: 4px; font-family: ui-monospace, monospace; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+button { background: #3a4150; color: inherit; border: 0; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+button:hover:not(:disabled) { background: #4a5368; }
+button:disabled { opacity: 0.4; cursor: default; }
+button.ship { background: #2f855a; }
+button.reject { background: #c53030; }
+.message { min-height: 1.4em; color: #f6e05e; }
+canvas { background: #20242c; border-radius: 8px; width: 100%; max-width: 320px; }
+.muted { color: #a0a6b2; }

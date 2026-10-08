@@ -1,3 +1,5 @@
+import { createAudioEngine } from '../audio/engine';
+import { soundsFor } from '../audio/events';
 import { addressLines } from '../game/address';
 import { bossNote } from '../game/boss';
 import {
@@ -33,11 +35,24 @@ import { drawPackage } from './packageArt';
 
 const fineText = (fines: number): string => money(fines > 0 ? -fines : 0);
 
+function safeStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null; // blocked by browser privacy settings
+  }
+}
+
 export function mount(root: HTMLElement, seed: number): void {
   let campaign = startCampaign(seed);
   let message = '';
+  const audio = createAudioEngine(safeStorage());
+  // Browsers only allow audio after a user gesture; capture so it is ready before the click's own sound.
+  root.addEventListener('click', () => audio.resume(), true);
 
   const update = (next: Campaign, msg = ''): void => {
+    for (const event of soundsFor(campaign, next)) audio.play(event);
+    audio.setDay(next.day);
     campaign = next;
     message = msg;
     render();
@@ -205,7 +220,12 @@ export function mount(root: HTMLElement, seed: number): void {
       shop: shopScreen,
       finished: finishedScreen,
     };
-    root.replaceChildren(el('h1', { text: 'PackInspect' }), screens[campaign.phase]());
+    const muteButton = button(`Sound: ${audio.isMuted() ? 'off' : 'on'}`, () => {
+      audio.setMuted(!audio.isMuted());
+      render();
+    });
+    const header = el('div', { cls: 'header' }, [el('h1', { text: 'PackInspect' }), muteButton]);
+    root.replaceChildren(header, screens[campaign.phase]());
   }
 
   render();

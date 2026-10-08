@@ -32,6 +32,7 @@ import {
 import { animationProgress, type PackageAction } from './animation';
 import { contentsFor, describeContents } from './contents';
 import { button, el } from './dom';
+import { createSoundControls } from './soundControls';
 import { money } from './money';
 import { drawPackage } from './packageArt';
 
@@ -53,6 +54,8 @@ export function mount(root: HTMLElement, seed: number): void {
   root.addEventListener('click', () => audio.resume(), true);
   // The most recent interaction, so the canvas can animate it (cleared when it finishes).
   let lastAction: { action: PackageAction; startedAt: number } | null = null;
+
+  const soundControls = createSoundControls(audio, () => render());
 
   const update = (next: Campaign, msg = ''): void => {
     for (const event of soundsFor(campaign, next)) audio.play(event);
@@ -251,11 +254,7 @@ export function mount(root: HTMLElement, seed: number): void {
       shop: shopScreen,
       finished: finishedScreen,
     };
-    const muteButton = button(`Sound: ${audio.isMuted() ? 'off' : 'on'}`, () => {
-      audio.setMuted(!audio.isMuted());
-      render();
-    });
-    const header = el('div', { cls: 'header' }, [el('h1', { text: 'PackInspect' }), muteButton]);
+    const header = el('div', { cls: 'header' }, [el('h1', { text: 'PackInspect' }), soundControls()]);
     root.replaceChildren(header, screens[campaign.phase]());
   }
 

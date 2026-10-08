@@ -1,7 +1,18 @@
-import { buildLoop, type Loop } from './music';
+import {
+  DEFAULT_TRACK_ID,
+  buildTrack,
+  eventsByStep,
+  isTrackId,
+  nextTrackId,
+  type StepEvent,
+  type Track,
+  type TrackId,
+} from './music';
 import { sfxFor, type SoundEvent, type Tone } from './sfx';
 
 const MUTE_KEY = 'packinspect.muted';
+const TRACK_KEY = 'packinspect.track';
+const AUTOPLAY_KEY = 'packinspect.autoplay';
 const LOOKAHEAD_SECONDS = 0.35;
 const TICK_MS = 100;
 
@@ -12,6 +23,13 @@ export interface AudioEngine {
   play(event: SoundEvent): void;
   setMuted(muted: boolean): void;
   isMuted(): boolean;
+  /** Jump to a track now. With auto-play on it carries on to the next track afterwards. */
+  selectTrack(id: TrackId): void;
+  /** On: each track plays through and the next follows. Off: the current track loops. */
+  setAutoPlay(on: boolean): void;
+  getTrackState(): { trackId: TrackId; autoPlay: boolean };
+  /** Called whenever the playing track changes, including when auto-play moves on. */
+  onTrackChange(listener: (id: TrackId) => void): void;
 }
 
 type KeyValueStore = Pick<Storage, 'getItem' | 'setItem'>;
@@ -21,8 +39,12 @@ const midiToHz = (midi: number): number => 440 * 2 ** ((midi - 69) / 12);
 export function createAudioEngine(storage: KeyValueStore | null): AudioEngine {
   let muted = readMuted(storage);
   let day = 1;
-  let loop: Loop = buildLoop(day);
-  let pendingLoop: Loop | null = null;
+  let trackId = readTrack(storage);
+  let autoPlay = readAutoPlay(storage);
+  let track: Track = buildTrack(trackId, day);
+  let index: Map<number, StepEvent[]> = eventsByStep(track);
+  let rebuildAtEnd = false; // the day changed: re-voice the track when it next comes round
+  const listeners: Array<(id: TrackId) => void> = [];
 
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
@@ -113,45 +135,61 @@ export function createAudioEngine(storage: KeyValueStore | null): AudioEngine {
     src.stop(start + dur + 0.02);
   }
 
-  function scheduleStep(index: number, time: number, secondsPerStep: number): void {
+  function loadTrack(id: TrackId): void {
+    trackId = id;
+    track = buildTrack(id, day);
+    index = eventsByStep(track);
+    rebuildAtEnd = false;
+  }
+
+  function notify(): void {
+    for (const listener of listeners) listener(trackId);
+  }
+
+  function scheduleStep(stepIndex: number, time: number, secondsPerStep: number): void {
     if (!music) return;
-    const drift = () => (Math.random() * 2 - 1) * loop.detuneCents;
-    for (const chord of loop.chords) {
-      if (chord.step !== index) continue;
-      for (const midi of chord.notes) {
-        osc('triangle', midiToHz(midi), time, chord.length * secondsPerStep, 0.06, music, drift());
+    const events = index.get(stepIndex);
+    if (!events) return;
+    const drift = () => (Math.random() * 2 - 1) * track.detuneCents;
+    for (const e of events) {
+      switch (e.kind) {
+        case 'chord':
+          for (const midi of e.chord.notes) {
+            osc('triangle', midiToHz(midi), time, e.chord.length * secondsPerStep, 0.06, music, drift());
+          }
+          break;
+        case 'bass':
+          osc('sine', midiToHz(e.note.midi), time, e.note.length * secondsPerStep, 0.22, music);
+          break;
+        case 'melody':
+          osc('sine', midiToHz(e.note.midi), time, e.note.length * secondsPerStep, 0.09, music, drift());
+          break;
+        case 'drum':
+          if (e.hit.kind === 'kick') osc('sine', 120, time, 0.18, 0.4, music, 0, 45);
+          else if (e.hit.kind === 'snare') noiseBurst(time, 0.12, 0.12, music, 1500);
+          else noiseBurst(time, 0.04, 0.05, music, 6000);
+          break;
       }
-    }
-    for (const n of loop.bass) {
-      if (n.step === index) osc('sine', midiToHz(n.midi), time, n.length * secondsPerStep, 0.22, music);
-    }
-    for (const n of loop.melody) {
-      if (n.step === index) {
-        osc('sine', midiToHz(n.midi), time, n.length * secondsPerStep, 0.09, music, drift());
-      }
-    }
-    for (const hit of loop.drums) {
-      if (hit.step !== index) continue;
-      if (hit.kind === 'kick') osc('sine', 120, time, 0.18, 0.4, music, 0, 45);
-      else if (hit.kind === 'snare') noiseBurst(time, 0.12, 0.12, music, 1500);
-      else noiseBurst(time, 0.04, 0.05, music, 6000);
     }
   }
 
   function schedule(): void {
     if (!ctx || ctx.state !== 'running') return;
     while (nextStepTime < ctx.currentTime + LOOKAHEAD_SECONDS) {
-      const secondsPerStep = 60 / loop.bpm / 4;
+      const secondsPerStep = 60 / track.bpm / 4;
       // Swing the off-beat 16ths a little for the lazy lo-fi feel.
       const swing = step % 2 === 1 ? secondsPerStep * 0.18 : 0;
       scheduleStep(step, nextStepTime + swing, secondsPerStep);
       nextStepTime += secondsPerStep;
       step += 1;
-      if (step >= loop.steps) {
+      if (step >= track.steps) {
+        // The end of a track is the only place to move on or re-voice, so it never lurches mid-phrase.
         step = 0;
-        if (pendingLoop) {
-          loop = pendingLoop;
-          pendingLoop = null;
+        const nextId = autoPlay ? nextTrackId(trackId) : trackId;
+        if (nextId !== trackId || rebuildAtEnd) {
+          const changed = nextId !== trackId;
+          loadTrack(nextId);
+          if (changed) notify();
         }
       }
     }
@@ -172,8 +210,7 @@ export function createAudioEngine(storage: KeyValueStore | null): AudioEngine {
     setDay(next) {
       if (next === day) return;
       day = next;
-      // Swap at the next loop boundary so the music never lurches mid-phrase.
-      pendingLoop = buildLoop(day);
+      rebuildAtEnd = true;
     },
     play(event) {
       if (muted || !ctx || ctx.state !== 'running') return;
@@ -182,21 +219,52 @@ export function createAudioEngine(storage: KeyValueStore | null): AudioEngine {
     },
     setMuted(next) {
       muted = next;
-      try {
-        storage?.setItem(MUTE_KEY, next ? '1' : '0');
-      } catch {
-        // Storage can be unavailable (private mode); the setting just will not persist.
-      }
+      remember(storage, MUTE_KEY, next ? '1' : '0');
       applyMute();
     },
     isMuted: () => muted,
+    selectTrack(id) {
+      if (!isTrackId(id)) return;
+      remember(storage, TRACK_KEY, id);
+      loadTrack(id);
+      if (ctx) {
+        // Start the chosen track straight away rather than waiting for the current one to end.
+        step = 0;
+        nextStepTime = ctx.currentTime + 0.05;
+      }
+      notify();
+    },
+    setAutoPlay(on) {
+      autoPlay = on;
+      remember(storage, AUTOPLAY_KEY, on ? '1' : '0');
+    },
+    getTrackState: () => ({ trackId, autoPlay }),
+    onTrackChange(listener) {
+      listeners.push(listener);
+    },
   };
 }
 
-function readMuted(storage: KeyValueStore | null): boolean {
+function read(storage: KeyValueStore | null, key: string): string | null {
   try {
-    return storage?.getItem(MUTE_KEY) === '1';
+    return storage?.getItem(key) ?? null;
   } catch {
-    return false;
+    return null; // storage can be blocked; settings just will not persist
   }
+}
+
+function remember(storage: KeyValueStore | null, key: string, value: string): void {
+  try {
+    storage?.setItem(key, value);
+  } catch {
+    // Storage can be unavailable (private mode); the setting just will not persist.
+  }
+}
+
+const readMuted = (storage: KeyValueStore | null): boolean => read(storage, MUTE_KEY) === '1';
+const readAutoPlay = (storage: KeyValueStore | null): boolean => read(storage, AUTOPLAY_KEY) !== '0';
+
+function readTrack(storage: KeyValueStore | null): TrackId {
+  const saved = read(storage, TRACK_KEY);
+  return saved !== null && isTrackId(saved) ? saved : DEFAULT_TRACK_ID;
 }

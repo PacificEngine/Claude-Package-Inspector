@@ -16,3 +16,5 @@ button.reject { background: #c53030; }
 .message { min-height: 1.4em; color: #f6e05e; }
 canvas { background: #20242c; border-radius: 8px; width: 100%; max-width: 320px; }
 .muted { color: #a0a6b2; }
+
+.header { display: flex; justify-content: space-between; align-items: center; }

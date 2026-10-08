@@ -29,6 +29,8 @@ import {
   isInspectionItem,
   unlockedItems,
 } from '../game/shop';
+import { animationProgress, type PackageAction } from './animation';
+import { contentsFor, describeContents } from './contents';
 import { button, el } from './dom';
 import { money } from './money';
 import { drawPackage } from './packageArt';
@@ -49,6 +51,8 @@ export function mount(root: HTMLElement, seed: number): void {
   const audio = createAudioEngine(safeStorage());
   // Browsers only allow audio after a user gesture; capture so it is ready before the click's own sound.
   root.addEventListener('click', () => audio.resume(), true);
+  // The most recent interaction, so the canvas can animate it (cleared when it finishes).
+  let lastAction: { action: PackageAction; startedAt: number } | null = null;
 
   const update = (next: Campaign, msg = ''): void => {
     for (const event of soundsFor(campaign, next)) audio.play(event);
@@ -58,10 +62,35 @@ export function mount(root: HTMLElement, seed: number): void {
     render();
   };
 
-  const act = (fn: (s: ShiftState) => ActionResult) => (): void => {
-    const result = fn(campaign.shift!);
-    update({ ...campaign, shift: result.state }, result.message);
-  };
+  const act =
+    (fn: (s: ShiftState) => ActionResult, action?: PackageAction) =>
+    (): void => {
+      const result = fn(campaign.shift!);
+      // Only animate when the action did something; a refused action just shows its message.
+      lastAction =
+        action && result.state !== campaign.shift ? { action, startedAt: performance.now() } : null;
+      update({ ...campaign, shift: result.state }, result.message);
+    };
+
+  function animate(canvas: HTMLCanvasElement, s: ShiftState): void {
+    const ctx = canvas.getContext('2d');
+    const pkg = currentPackage(s);
+    if (!ctx || !pkg) return;
+    const current = lastAction;
+    if (!current) {
+      drawPackage(ctx, pkg, s.handling);
+      return;
+    }
+    const reduced =
+      typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const frame = (now: number): void => {
+      const progress = animationProgress(current.action, now - current.startedAt, reduced);
+      drawPackage(ctx, pkg, s.handling, { action: current.action, progress });
+      if (progress < 1 && canvas.isConnected) requestAnimationFrame(frame);
+      else if (lastAction === current) lastAction = null;
+    };
+    frame(performance.now());
+  }
 
   function shiftScreen(): HTMLElement {
     const s = campaign.shift!;
@@ -95,13 +124,15 @@ export function mount(root: HTMLElement, seed: number): void {
     }
 
     const canvas = el('canvas', { attrs: { width: '320', height: '260' } });
-    const ctx = canvas.getContext('2d');
-    if (ctx) drawPackage(ctx, pkg, s.handling);
+    animate(canvas, s);
 
     const label = el('div', { cls: 'label-card' }, [
       ...addressLines(pkg.address).map((line) => el('div', { text: line })),
       el('div', { text: `Declared weight: ${pkg.declaredWeightKg} kg` }),
     ]);
+    const inside = s.handling.opened
+      ? [el('p', { cls: 'inside', text: `Inside: ${describeContents(contentsFor(pkg))}` })]
+      : [];
 
     const notes = el('div', { cls: 'panel' }, [
       el('h3', { text: 'Notes' }),
@@ -110,15 +141,15 @@ export function mount(root: HTMLElement, seed: number): void {
 
     const owned = INSPECTION_ITEMS.filter((t) => s.inventory.tools.includes(t));
     const inspectRow = el('div', { cls: 'row' }, [
-      ...owned.map((t) => button(ITEM_NAMES[t], act((st) => inspect(st, t)), s.handling.used.includes(t))),
+      ...owned.map((t) => button(ITEM_NAMES[t], act((st) => inspect(st, t), t), s.handling.used.includes(t))),
       ...(owned.length === 0 ? [el('span', { cls: 'muted', text: 'No inspection tools yet.' })] : []),
     ]);
 
     const stocked = REPAIR_ITEMS.filter((t) => s.inventory.supplies[t] > 0);
     const repairRow = el('div', { cls: 'row' }, [
-      button('Open box', act(openBox), s.handling.opened),
+      button('Open box', act(openBox, 'open'), s.handling.opened),
       ...stocked.map((t) =>
-        button(`${ITEM_NAMES[t]} (${s.inventory.supplies[t]})`, act((st) => repair(st, t))),
+        button(`${ITEM_NAMES[t]} (${s.inventory.supplies[t]})`, act((st) => repair(st, t), 'repair')),
       ),
     ]);
 
@@ -130,7 +161,7 @@ export function mount(root: HTMLElement, seed: number): void {
     return el('div', {}, [
       hud,
       el('div', { cls: 'grid' }, [
-        el('div', {}, [canvas, label]),
+        el('div', {}, [canvas, label, ...inside]),
         el('div', {}, [
           card,
           notes,

@@ -345,10 +345,10 @@ export function mount(root: HTMLElement, seed: number): void {
       hud,
       el('div', { cls: 'grid' }, [
         el('div', {}, [stage, label, ...inside]),
-        el('div', {}, [
+        el('div', { cls: 'side' }, [
           card,
           notes,
-          el('div', { cls: 'panel' }, [
+          el('div', { cls: 'panel actions' }, [
             el('h3', { text: 'Inspect' }),
             inspectRow,
             el('h3', { text: 'Repair' }),

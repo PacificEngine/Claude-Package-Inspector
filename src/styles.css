@@ -4,6 +4,7 @@ body { margin: 0; background: #1a1d23; color: #e8e8ea; }
 h1, h2, h3 { margin: 0 0 8px; }
 .hud { display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 12px; background: #262a33; border-radius: 8px; margin-bottom: 12px; }
 .grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; }
+.side { display: flex; flex-direction: column; }
 .panel { background: #262a33; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
 .panel ul { margin: 0; padding-left: 18px; }
 .label-card { background: #fdfdf5; color: #222; padding: 10px; border-radius: 4px; font-family: ui-monospace, monospace; }
@@ -50,4 +51,6 @@ h4 { margin: 8px 0 4px; }
   .stage { margin: 0 auto; }
   .row { gap: 6px; }
   .tabs button { flex: 1 1 auto; }
+  /* On a phone the controls come before the rules so the player is not scrolling past them each package. */
+  .side .actions { order: -1; }
 }

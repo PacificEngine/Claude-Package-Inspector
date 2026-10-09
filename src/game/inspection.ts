@@ -1,8 +1,9 @@
 import { DEFECTS } from './defects';
-import type { DefectId, Handling, InspectionTool, Package, View } from './types';
+import { faceKey, isFaceless, placementOf, shapeNote } from './shapes';
+import type { DefectId, Handling, InspectionTool, Package, Side, View } from './types';
 
 export type ClueChannel = 'visual' | 'sound' | 'reading';
-export type ClueSource = InspectionTool | 'inside';
+export type ClueSource = InspectionTool | 'inside' | 'shape';
 
 export interface Clue {
   key: string; // stable id used to record the clue in notes
@@ -32,11 +33,25 @@ const QUIET: Record<InspectionTool, string> = {
   stethoscope: 'Only silence.',
 };
 
-// The tools that can show something on each side of the package.
-const VIEW_TOOLS: Record<'front' | 'back', readonly InspectionTool[]> = {
-  front: ['look', 'uv', 'pebble'],
-  back: ['rotate'],
+// The tools that reveal a surface defect while its face is showing.
+const FACE_TOOLS: Record<'front' | 'back', readonly InspectionTool[]> = {
+  front: ['look', 'uv'],
+  back: ['rotate', 'uv'],
 };
+// The tools whose clues a marker can record in each outside view (the pebble works on any up face).
+const CLUE_TOOLS: Record<'front' | 'back', readonly InspectionTool[]> = {
+  front: ['look', 'uv', 'pebble'],
+  back: ['rotate', 'uv'],
+};
+const SURFACE_TOOLS: readonly InspectionTool[] = ['look', 'uv', 'rotate'];
+
+const shapeClue = (pkg: Package): Clue => ({
+  key: 'shape',
+  source: 'shape',
+  defect: null,
+  channel: 'reading',
+  text: shapeNote(pkg.kind),
+});
 
 const clueKey = (source: ClueSource, defect: DefectId | null): string =>
   `${source}:${defect ?? 'none'}`;
@@ -82,37 +97,44 @@ export function insideCluesFor(pkg: Package, repaired: readonly DefectId[] = [])
     }));
 }
 
-// Defects the player knows about: found by a tool they used, or visible because the box is open.
+// Defects the player knows about: seen on a face they have shown, found by a non-surface tool,
+// or visible because the box is open.
 export function revealedDefects(pkg: Package, handling: Handling): DefectId[] {
-  return pkg.defects.filter(
-    (id) =>
-      !handling.repaired.includes(id) &&
-      (Object.keys(DEFECTS[id].clues).some((tool) => handling.used.includes(tool as InspectionTool)) ||
-        (handling.opened && DEFECTS[id].insideClue !== undefined)),
-  );
+  return pkg.defects.filter((id) => {
+    if (handling.repaired.includes(id)) return false;
+    const def = DEFECTS[id];
+    const tools = Object.keys(def.clues) as InspectionTool[];
+    const p = placementOf(pkg, id);
+    const seen = handling.visited.includes(faceKey(p.side, p.face));
+    const bySurface = seen && tools.some((t) => SURFACE_TOOLS.includes(t) && handling.used.includes(t));
+    const byOther = tools.some((t) => !SURFACE_TOOLS.includes(t) && handling.used.includes(t));
+    return bySurface || byOther || (handling.opened && def.insideClue !== undefined);
+  });
 }
 
-// Defects with a drawn marker in the given view.
+// Defects with a drawn marker in the given view, on the face that is showing.
 export function visibleDefects(pkg: Package, handling: Handling, view: View): DefectId[] {
   return pkg.defects.filter((id) => {
     if (handling.repaired.includes(id)) return false;
     const def = DEFECTS[id];
     if (view === 'inside') return def.insideClue !== undefined;
-    return VIEW_TOOLS[view].some((t) => def.clues[t] !== undefined && handling.used.includes(t));
+    const side: Side = view === 'front' ? 'up' : 'down';
+    const p = placementOf(pkg, id);
+    const onThisFace = p.side === side && (p.face === handling.face || (view === 'front' && isFaceless(id)));
+    const bySurface =
+      onThisFace && FACE_TOOLS[view].some((t) => def.clues[t] !== undefined && handling.used.includes(t));
+    const dropped = view === 'front' && def.clues.pebble !== undefined && handling.used.includes('pebble');
+    return bySurface || dropped;
   });
 }
 
 // What clicking a defect's marker in this view records.
-export function markerClues(
-  pkg: Package,
-  handling: Handling,
-  defect: DefectId,
-  view: View,
-): Clue[] {
+export function markerClues(pkg: Package, handling: Handling, defect: DefectId, view: View): Clue[] {
   if (view === 'inside') {
     return insideCluesFor(pkg, handling.repaired).filter((c) => c.defect === defect);
   }
-  return VIEW_TOOLS[view]
+  if (!visibleDefects(pkg, handling, view).includes(defect)) return [];
+  return CLUE_TOOLS[view]
     .filter((t) => handling.used.includes(t))
     .flatMap((t) => cluesFor(pkg, t, handling.repaired))
     .filter((c) => c.defect === defect);
@@ -121,6 +143,7 @@ export function markerClues(
 // The clues the player has recorded, in the order they recorded them.
 export function notedClues(pkg: Package, handling: Handling): Clue[] {
   const known = [
+    shapeClue(pkg),
     ...handling.used.flatMap((t) => cluesFor(pkg, t, handling.repaired)),
     ...insideCluesFor(pkg, handling.repaired),
   ];

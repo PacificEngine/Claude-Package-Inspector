@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newHandling } from '../game/handling';
 import { makePackage } from '../game/testing';
 import type { DefectId } from '../game/types';
-import { bodyRect, insideLayout } from './geometry';
+import { bodyRect, insideLayout, labelRect } from './geometry';
 import { markerNoted, markersFor } from './markers';
 
 const W = 320;
@@ -91,5 +91,34 @@ describe('markerNoted', () => {
     expect(markerNoted(pkg, h, m)).toBe(false);
     expect(markerNoted(pkg, { ...h, notes: ['look:leaking'] }, m)).toBe(false);
     expect(markerNoted(pkg, { ...h, notes: ['look:leaking', 'uv:leaking'] }, m)).toBe(true);
+  });
+});
+
+describe('new shapes', () => {
+  it('puts the missing-label marker on the label rectangle for every kind', () => {
+    for (const kind of ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra'] as const) {
+      const body = bodyRect(kind, W, H);
+      const pkg = makePackage({ kind, defects: ['missing_label'] });
+      const [m] = markersFor(pkg, front, W, H);
+      expect(m.rect, kind).toEqual(labelRect(kind, body));
+    }
+  });
+
+  it('keeps every marker of a prism and a tetrahedron inside the canvas', () => {
+    const faceHandlings = [
+      { ...front, used: ['look' as const, 'uv' as const, 'pebble' as const] },
+      { ...flipped, face: 2 },
+      open,
+    ];
+    for (const kind of ['prism', 'tetra'] as const) {
+      for (const h of faceHandlings) {
+        for (const m of markersFor(makePackage({ kind, defects: ['missing_label', 'bottomless', 'torn_tape'] }), h, W, H)) {
+          expect(m.rect.x + m.rect.w).toBeLessThanOrEqual(W);
+          expect(m.rect.y + m.rect.h).toBeLessThanOrEqual(H);
+          expect(m.rect.x).toBeGreaterThanOrEqual(0);
+          expect(m.rect.y).toBeGreaterThanOrEqual(0);
+        }
+      }
+    }
   });
 });

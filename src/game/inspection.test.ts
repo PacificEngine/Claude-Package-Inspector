@@ -50,7 +50,7 @@ describe('revealedDefects', () => {
   it('reveals defects visible to tools already used', () => {
     const pkg = makePackage({ defects: ['torn_tape', 'bottomless'] });
     expect(revealedDefects(pkg, newHandling())).toEqual(['torn_tape']);
-    expect(revealedDefects(pkg, { ...newHandling(), used: ['look', 'rotate'] })).toEqual([
+    expect(revealedDefects(pkg, { ...newHandling(), visited: ['up:0', 'down:0'], used: ['look', 'rotate'] })).toEqual([
       'torn_tape',
       'bottomless',
     ]);
@@ -123,6 +123,24 @@ describe('visibleDefects', () => {
     ]);
   });
 
+  it('a UV-only glow shows on every up face, since it has no face', () => {
+    const glowing = makePackage({ kind: 'box', defects: ['scorching'] });
+    for (const face of [0, 1, 2]) {
+      const h = { ...newHandling(), face, used: ['look' as const, 'uv' as const] };
+      expect(visibleDefects(glowing, h, 'front')).toEqual(['scorching']);
+    }
+  });
+
+  it('a surface defect on another face is still hidden', () => {
+    const torn = makePackage({
+      kind: 'box',
+      defects: ['torn_tape'],
+      placements: { torn_tape: { side: 'up', face: 2 } },
+    });
+    expect(visibleDefects(torn, { ...newHandling(), face: 2 }, 'front')).toEqual(['torn_tape']);
+    expect(visibleDefects(torn, { ...newHandling(), face: 0 }, 'front')).toEqual([]);
+  });
+
   it('back shows what flipping revealed', () => {
     expect(visibleDefects(pkg, newHandling(), 'back')).toEqual([]);
     expect(visibleDefects(pkg, { ...newHandling(), used: ['look', 'rotate'] }, 'back')).toEqual([
@@ -171,5 +189,62 @@ describe('markerClues and notedClues', () => {
       repaired: ['leaking' as const],
     };
     expect(notedClues(pkg, h)).toEqual([]);
+  });
+});
+
+describe('faces', () => {
+  const torn = makePackage({
+    defects: ['torn_tape'],
+    placements: { torn_tape: { side: 'up', face: 2 } },
+  });
+
+  it('shows a defect only on the face it sits on', () => {
+    expect(visibleDefects(torn, newHandling(), 'front')).toEqual([]);
+    expect(visibleDefects(torn, { ...newHandling(), face: 2 }, 'front')).toEqual(['torn_tape']);
+    expect(visibleDefects(torn, { ...newHandling(), face: 1 }, 'front')).toEqual([]);
+  });
+
+  it('treats a defect as revealed only once its face has been shown', () => {
+    expect(revealedDefects(torn, newHandling())).toEqual([]);
+    expect(revealedDefects(torn, { ...newHandling(), visited: ['up:0', 'up:2'] })).toEqual(['torn_tape']);
+  });
+
+  it('shows an underside defect on the down side face it sits on', () => {
+    const wet = makePackage({
+      kind: 'tetra',
+      defects: ['wet_cardboard'],
+      placements: { wet_cardboard: { side: 'down', face: 3 } },
+    });
+    const flipped = { ...newHandling(), flipped: true, used: ['look' as const, 'rotate' as const] };
+    expect(visibleDefects(wet, { ...flipped, face: 0 }, 'back')).toEqual([]);
+    expect(visibleDefects(wet, { ...flipped, face: 3 }, 'back')).toEqual(['wet_cardboard']);
+    expect(revealedDefects(wet, flipped)).toEqual([]);
+    expect(revealedDefects(wet, { ...flipped, visited: ['up:0', 'down:3'] })).toEqual(['wet_cardboard']);
+  });
+
+  it('lets the pebble show a bottomless defect on any up face', () => {
+    const pkg = makePackage({ defects: ['bottomless'] });
+    const h = { ...newHandling(), used: ['look' as const, 'pebble' as const], face: 3 };
+    expect(visibleDefects(pkg, h, 'front')).toEqual(['bottomless']);
+  });
+
+  it('does not let markers record a defect that is not on the showing face', () => {
+    expect(markerClues(torn, newHandling(), 'torn_tape', 'front')).toEqual([]);
+    expect(markerClues(torn, { ...newHandling(), face: 2 }, 'torn_tape', 'front').map((c) => c.key)).toEqual([
+      'look:torn_tape',
+    ]);
+  });
+
+  it('records the shape as the first note', () => {
+    const notes = notedClues(makePackage({ kind: 'prism' }), newHandling());
+    expect(notes).toEqual([
+      {
+        key: 'shape',
+        source: 'shape',
+        defect: null,
+        channel: 'reading',
+        text: 'Shape: triangular prism. Three sides to rotate; it cannot be flipped.',
+      },
+    ]);
   });
 });

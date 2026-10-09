@@ -16,8 +16,9 @@ export interface DefectDef {
   insideClue?: string;
 }
 
-const ANY: readonly PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube'];
-const FLAT: readonly PackageKind[] = ['box', 'parcel'];
+const ANY: readonly PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra'];
+const SURFACE_SHAPES: readonly PackageKind[] = ['box', 'parcel', 'prism'];
+const UNDERSIDE_SHAPES: readonly PackageKind[] = ['box', 'parcel', 'tetra'];
 
 export const DEFECTS: Record<DefectId, DefectDef> = {
   leaking: {
@@ -37,7 +38,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
   crushed_corner: {
     id: 'crushed_corner',
     label: 'Crushed corner',
-    kinds: FLAT,
+    kinds: SURFACE_SHAPES,
     clues: {
       look: 'One corner is crushed flat.',
       rotate: 'The crushed corner caves in when you turn it.',
@@ -50,7 +51,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
   torn_tape: {
     id: 'torn_tape',
     label: 'Torn tape',
-    kinds: FLAT,
+    kinds: SURFACE_SHAPES,
     clues: { look: 'The sealing tape is torn and peeling.' },
     repairedBy: 'tape',
     fantastical: false,
@@ -73,7 +74,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
   wet_cardboard: {
     id: 'wet_cardboard',
     label: 'Wet cardboard',
-    kinds: FLAT,
+    kinds: UNDERSIDE_SHAPES,
     clues: {
       rotate: 'The underside is soggy.',
       uv: 'UV lights up a damp patch.',
@@ -116,7 +117,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
   bottomless: {
     id: 'bottomless',
     label: 'No bottom',
-    kinds: FLAT,
+    kinds: UNDERSIDE_SHAPES,
     clues: {
       rotate: 'You flip it over. There is no bottom, only darkness.',
       pebble: 'The pebble drops in... and never lands.',

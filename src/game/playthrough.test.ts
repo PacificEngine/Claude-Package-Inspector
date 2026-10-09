@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buy, endDay, nextDay, startCampaign, toShop, type Campaign } from './campaign';
 import { LAST_DAY, needsOpening, rejectWorthyProblems, isShippable } from './rules';
-import { closeBox, currentPackage, flipBox, inspect, openBox, repair, stamp, type ShiftState } from './shift';
+import { closeBox, currentPackage, flipBox, inspect, openBox, repair, rotateBox, stamp, type ShiftState } from './shift';
+import { faceCount } from './shapes';
 import { unlockedItems } from './shop';
 
 interface ShiftMetrics {
@@ -9,6 +10,7 @@ interface ShiftMetrics {
   repaired: number;
   refused: number;
   skippedForStock: number;
+  wasted: number;
 }
 
 function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftState {
@@ -26,8 +28,18 @@ function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftSt
         }
         // Reveal the back, then return the box face up.
         if (s.inventory.tools.includes('rotate')) {
-          s = flipBox(s).state;
-          s = flipBox(s).state;
+          const sweep = (): void => {
+            // Show every face on the side that is showing; a full turn returns to the face we started on.
+            const side = s.handling.flipped ? 'down' : 'up';
+            for (let i = 0; i < faceCount(pkg.kind, side); i++) s = rotateBox(s).state;
+          };
+          sweep(); // up faces (a full turn returns to face 1)
+          const flipped = flipBox(s);
+          if (flipped.state.handling.flipped) {
+            s = flipped.state;
+            sweep(); // down faces
+            s = flipBox(s).state; // back face up
+          }
         }
         // Exterior-only repairs (tape on tape or a dent) are done with the box closed.
         if (needsOpening(pkg, s.card)) {
@@ -39,6 +51,7 @@ function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftSt
           s = result.state;
           if (result.message.startsWith('Fixed:')) metrics.repaired++;
           if (result.message === 'Open the box first.') metrics.refused++;
+          if (result.message.includes('Supply wasted')) metrics.wasted++;
         }
       } else {
         metrics.skippedForStock++;
@@ -60,7 +73,7 @@ function stockUp(c: Campaign): Campaign {
 describe('a perfect inspector playing all seven days', () => {
   for (const seed of [1, 2, 3]) {
     it(`finishes the campaign with no strikes (seed ${seed})`, () => {
-      const metrics: ShiftMetrics = { opened: 0, repaired: 0, refused: 0, skippedForStock: 0 };
+      const metrics: ShiftMetrics = { opened: 0, repaired: 0, refused: 0, skippedForStock: 0, wasted: 0 };
       let c = startCampaign(seed);
       while (c.phase !== 'finished') {
         c = { ...c, shift: playShiftPerfectly(c.shift!, metrics) };
@@ -75,6 +88,7 @@ describe('a perfect inspector playing all seven days', () => {
       expect(metrics.opened).toBeGreaterThan(0);
       expect(metrics.repaired).toBeGreaterThan(0);
       expect(metrics.refused).toBe(0);
+      expect(metrics.wasted).toBe(0);
     });
   }
 });

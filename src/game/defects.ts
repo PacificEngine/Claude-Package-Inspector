@@ -6,7 +6,7 @@ export interface DefectDef {
   kinds: readonly PackageKind[];
   // Which inspection tools reveal it, with the text the player reads.
   clues: Partial<Record<InspectionTool, string>>;
-  repairedBy: RepairTool | null;
+  repairedBy: RepairTool | 'discard' | null;
   fantastical: boolean;
   // First day this defect may appear (see consistency test in Task 9).
   minDay: number;
@@ -89,7 +89,7 @@ export const DEFECTS: Record<DefectId, DefectDef> = {
     label: 'Wrong weight',
     kinds: ANY,
     clues: { scale: 'The scale disagrees with the label.' },
-    repairedBy: 'relabel',
+    repairedBy: 'discard',
     fantastical: false,
     minDay: 3,
     repairNeedsOpen: true,

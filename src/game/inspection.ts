@@ -1,9 +1,10 @@
+import { itemsIn, weightIsDeclared, weightLeft } from './contents';
 import { DEFECTS } from './defects';
 import { faceKey, isFaceless, placementOf, shapeNote } from './shapes';
 import type { DefectId, Handling, InspectionTool, Package, Side, View } from './types';
 
 export type ClueChannel = 'visual' | 'sound' | 'reading';
-export type ClueSource = InspectionTool | 'inside' | 'shape';
+export type ClueSource = InspectionTool | 'inside' | 'shape' | 'item' | 'leak';
 
 export interface Clue {
   key: string; // stable id used to record the clue in notes
@@ -60,6 +61,7 @@ export function cluesFor(
   pkg: Package,
   tool: InspectionTool,
   repaired: readonly DefectId[] = [],
+  discarded: readonly number[] = [],
 ): Clue[] {
   const channel = CLUE_CHANNEL[tool];
   const make = (defect: DefectId | null, text: string): Clue => ({
@@ -70,13 +72,15 @@ export function cluesFor(
     text,
   });
   const clues: Clue[] = [];
+  let weight = pkg.actualWeightKg;
   if (tool === 'scale') {
-    clues.push(
-      make(null, `Scale reads ${pkg.actualWeightKg} kg (label says ${pkg.declaredWeightKg} kg).`),
-    );
+    weight = weightLeft(pkg, discarded);
+    clues.push(make(null, `Scale reads ${weight} kg (label says ${pkg.declaredWeightKg} kg).`));
   }
   for (const id of pkg.defects) {
     if (repaired.includes(id)) continue;
+    // Once the stowaways are out, the scale no longer disagrees with the label.
+    if (tool === 'scale' && id === 'wrong_weight' && weightIsDeclared(weight, pkg.declaredWeightKg)) continue;
     const text = DEFECTS[id].clues[tool];
     if (text) clues.push(make(id, text));
   }
@@ -136,16 +140,41 @@ export function markerClues(pkg: Package, handling: Handling, defect: DefectId, 
   if (!visibleDefects(pkg, handling, view).includes(defect)) return [];
   return CLUE_TOOLS[view]
     .filter((t) => handling.used.includes(t))
-    .flatMap((t) => cluesFor(pkg, t, handling.repaired))
+    .flatMap((t) => cluesFor(pkg, t, handling.repaired, handling.discarded))
     .filter((c) => c.defect === defect);
+}
+
+// What the player can learn about each item that is still in the package.
+export function itemCluesFor(pkg: Package, handling: Handling): Clue[] {
+  return itemsIn(pkg, handling).flatMap((item): Clue[] => [
+    {
+      key: `item:${item.id}`,
+      source: 'item',
+      defect: null,
+      channel: 'reading',
+      text: `The ${item.name} weighs ${item.weightKg} kg.`,
+    },
+    ...(item.leaking && !handling.sealed.includes(item.id)
+      ? [
+          {
+            key: `leak:${item.id}`,
+            source: 'leak' as const,
+            defect: null,
+            channel: 'visual' as const,
+            text: `The ${item.name} is leaking.`,
+          },
+        ]
+      : []),
+  ]);
 }
 
 // The clues the player has recorded, in the order they recorded them.
 export function notedClues(pkg: Package, handling: Handling): Clue[] {
   const known = [
     shapeClue(pkg),
-    ...handling.used.flatMap((t) => cluesFor(pkg, t, handling.repaired)),
+    ...handling.used.flatMap((t) => cluesFor(pkg, t, handling.repaired, handling.discarded)),
     ...insideCluesFor(pkg, handling.repaired),
+    ...itemCluesFor(pkg, handling),
   ];
   return handling.notes
     .map((key) => known.find((c) => c.key === key))

@@ -1,4 +1,5 @@
 import { ADDRESS_ISSUE_LABELS } from './address';
+import { itemsIn } from './contents';
 import { DEFECTS } from './defects';
 import { openingFine } from './economy';
 import { newHandling, viewOf } from './handling';
@@ -167,7 +168,7 @@ export function inspect(s: ShiftState, tool: InspectionTool): ActionResult {
     return { state: s, message: 'Close the box and turn it face up first.' };
   }
   if (s.handling.used.includes(tool)) return { state: s, message: 'You already checked that.' };
-  const clues = cluesFor(pkg, tool, s.handling.repaired);
+  const clues = cluesFor(pkg, tool, s.handling.repaired, s.handling.discarded);
   // Sounds and readings need no marker, so they go straight into the notes.
   const auto = CLUE_CHANNEL[tool] === 'visual' ? [] : clues.map((c) => c.key);
   return {
@@ -197,6 +198,50 @@ export function openBox(s: ShiftState): ActionResult {
       fines: s.fines + fine,
     },
     message: fine > 0 ? `Fined $${fine}: that box did not need opening.` : 'Box opened.',
+  };
+}
+
+const findItem = (s: ShiftState, pkg: Package, itemId: number) =>
+  itemsIn(pkg, s.handling).find((i) => i.id === itemId);
+
+export function weighItem(s: ShiftState, itemId: number): ActionResult {
+  const pkg = currentPackage(s);
+  if (!pkg) return idle(s);
+  if (!s.handling.opened) return { state: s, message: 'Open the box first.' };
+  if (!s.inventory.tools.includes('scale')) return { state: s, message: 'You do not own that tool.' };
+  const item = findItem(s, pkg, itemId);
+  if (!item) return { state: s, message: 'There is no such item.' };
+  return {
+    state: { ...s, handling: { ...s.handling, notes: noteKeys(s.handling, [`item:${item.id}`]) } },
+    message: `The ${item.name} weighs ${item.weightKg} kg.`,
+  };
+}
+
+export function discardItem(s: ShiftState, itemId: number): ActionResult {
+  const pkg = currentPackage(s);
+  if (!pkg) return idle(s);
+  if (!s.handling.opened) return { state: s, message: 'Open the box first.' };
+  const item = findItem(s, pkg, itemId);
+  if (!item) return { state: s, message: 'There is no such item.' };
+  return {
+    state: { ...s, handling: { ...s.handling, discarded: [...s.handling.discarded, item.id] } },
+    message: `You throw away the ${item.name}.`,
+  };
+}
+
+export function noteLeak(s: ShiftState, itemId: number): ActionResult {
+  const pkg = currentPackage(s);
+  if (!pkg) return idle(s);
+  if (!s.handling.opened) return { state: s, message: 'Open the box first.' };
+  const item = findItem(s, pkg, itemId);
+  if (!item || !item.leaking || s.handling.sealed.includes(item.id)) {
+    return { state: s, message: 'Nothing to note there.' };
+  }
+  const key = `leak:${item.id}`;
+  if (s.handling.notes.includes(key)) return { state: s, message: 'Already noted.' };
+  return {
+    state: { ...s, handling: { ...s.handling, notes: noteKeys(s.handling, [key]) } },
+    message: `The ${item.name} is leaking.`,
   };
 }
 

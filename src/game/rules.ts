@@ -1,4 +1,5 @@
 import { addressIssues, isRepairableAddressIssue } from './address';
+import { itemsIn, labelMatches, weightMatches } from './contents';
 import { ALL_DEFECT_IDS, DEFECTS } from './defects';
 import type { AddressIssue, DefectId, Handling, Package, RepairTool, Verdict } from './types';
 
@@ -171,7 +172,7 @@ export function ruleCardForDay(day: number): RuleCard {
 export interface Problem {
   source: 'defect' | 'address';
   id: DefectId | AddressIssue;
-  repairTool: RepairTool | null;
+  repairTool: RepairTool | 'discard' | null;
   requiresOpen: boolean;
 }
 
@@ -195,13 +196,19 @@ export function rejectWorthyProblems(pkg: Package, card: RuleCard): Problem[] {
   return [...defects, ...addresses];
 }
 
-function isResolved(problem: Problem, handling: Handling): boolean {
-  if (problem.source === 'defect') return handling.repaired.includes(problem.id as DefectId);
-  return problem.repairTool === 'relabel' && handling.relabeled;
+function isResolved(problem: Problem, handling: Handling, pkg: Package): boolean {
+  if (problem.source === 'address') return problem.repairTool === 'relabel' && handling.relabeled;
+  const id = problem.id as DefectId;
+  if (id === 'wrong_weight') return weightMatches(pkg, handling);
+  // The label must be reprinted for what is inside now; an emptied box needs none.
+  if (id === 'missing_label') {
+    return itemsIn(pkg, handling).length === 0 || (handling.repaired.includes(id) && labelMatches(pkg, handling));
+  }
+  return handling.repaired.includes(id);
 }
 
 export function unresolvedProblems(pkg: Package, handling: Handling, card: RuleCard): Problem[] {
-  return rejectWorthyProblems(pkg, card).filter((p) => !isResolved(p, handling));
+  return rejectWorthyProblems(pkg, card).filter((p) => !isResolved(p, handling, pkg));
 }
 
 export function isShippable(pkg: Package, handling: Handling, card: RuleCard): boolean {

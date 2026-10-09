@@ -1,3 +1,4 @@
+import type { Item } from './contents';
 export type PackageKind = 'box' | 'can' | 'parcel' | 'jar' | 'tube' | 'prism' | 'tetra';
 
 export type InspectionTool =
@@ -58,6 +59,8 @@ export interface Placement {
 }
 
 export interface Package {
+  contents: Item[];
+  packagingKg: number;
   id: number;
   kind: PackageKind;
   placements?: Partial<Record<DefectId, Placement>>;
@@ -79,6 +82,9 @@ export interface Handling {
   repaired: DefectId[];
   relabeled: boolean;
   notes: string[]; // keys of the clues the player has recorded, in order
+  discarded: number[]; // ids of items the player has thrown away
+  sealed: number[]; // ids of leaking items the player has sealed
+  labelItems: number[] | null; // ids of the items the contents label was last printed for
 }
 
 export interface Inventory {

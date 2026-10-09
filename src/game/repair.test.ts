@@ -57,9 +57,9 @@ describe('applyRepair', () => {
   });
 
   it('refuses a closed tool that fixes nothing outside while a revealed defect needs opening, spending nothing', () => {
-    const pkg = makePackage({ defects: ['wrong_weight'] });
-    const scaled = { ...closed, used: ['look' as const, 'scale' as const] };
-    expect(applyRepair(pkg, scaled, inventoryWith({ relabel: 1 }), 'relabel')).toEqual({
+    // The missing label is seen from outside with the look tool, but only fixed with the box open.
+    const pkg = makePackage({ defects: ['missing_label'] });
+    expect(applyRepair(pkg, closed, inventoryWith({ relabel: 1 }), 'relabel')).toEqual({
       ok: false,
       reason: 'Open the box first.',
     });
@@ -141,5 +141,80 @@ describe('applyRepair', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.handling.relabeled).toBe(false);
+  });
+});
+
+describe('items and labels', () => {
+  const open = { ...newHandling(), opened: true };
+  const item = (id: number, over = {}) => ({
+    id, name: `t${id}`, art: 'dome' as const, color: '#fff', weightKg: 0.3, ...over,
+  });
+
+  it('seals one leaking item per sealant, then fixes the cardboard', () => {
+    const wet = makePackage({
+      defects: ['wet_cardboard'],
+      contents: [item(1, { leaking: true }), item(2, { leaking: true })],
+    });
+    const h = { ...open, used: ['look' as const, 'rotate' as const], visited: ['up:0', 'down:0'] };
+    const inv = inventoryWith({ sealant: 3 });
+    const first = applyRepair(wet, h, inv, 'sealant');
+    expect(first.ok && first.handling.sealed).toEqual([1]);
+    expect(first.ok && first.handling.repaired).toEqual([]);
+    expect(first.ok && first.fixed).toEqual(['the leaking t1']);
+    const second = applyRepair(wet, first.ok ? first.handling : h, first.ok ? first.inventory : inv, 'sealant');
+    expect(second.ok && second.handling.sealed).toEqual([1, 2]);
+    const third = applyRepair(wet, second.ok ? second.handling : h, second.ok ? second.inventory : inv, 'sealant');
+    expect(third.ok && third.handling.repaired).toEqual(['wet_cardboard']);
+    expect(third.ok && third.inventory.supplies.sealant).toBe(0);
+  });
+
+  it('fixes soggy cardboard with a single sealant when nothing inside leaks', () => {
+    const wet = makePackage({ defects: ['wet_cardboard'], contents: [item(1)] });
+    const h = { ...open, used: ['look' as const, 'rotate' as const], visited: ['up:0', 'down:0'] };
+    const r = applyRepair(wet, h, inventoryWith({ sealant: 1 }), 'sealant');
+    expect(r.ok && r.handling.repaired).toEqual(['wet_cardboard']);
+  });
+
+  it('prints the contents label from what is inside, and reprints it when it no longer matches', () => {
+    const p = makePackage({ defects: ['missing_label'], contents: [item(1), item(2)] });
+    const inv = inventoryWith({ relabel: 2 });
+    const first = applyRepair(p, open, inv, 'relabel');
+    expect(first.ok && first.handling.repaired).toEqual(['missing_label']);
+    expect(first.ok && first.handling.labelItems).toEqual([1, 2]);
+    const thrown = { ...(first.ok ? first.handling : open), discarded: [2] };
+    const again = applyRepair(p, thrown, first.ok ? first.inventory : inv, 'relabel');
+    expect(again.ok && again.handling.labelItems).toEqual([1]);
+    expect(again.ok && again.fixed).toEqual(['contents label']);
+  });
+
+  it('no longer fixes wrong weight with the relabel kit', () => {
+    const p = makePackage({ defects: ['wrong_weight'], contents: [item(1)] });
+    const h = { ...open, used: ['look' as const, 'scale' as const] };
+    const r = applyRepair(p, h, inventoryWith({ relabel: 1 }), 'relabel');
+    expect(r.ok && r.fixed).toEqual([]);
+  });
+
+  it('refuses sealant on a closed box with a leaking item and wet cardboard, spending nothing', () => {
+    const wet = makePackage({ defects: ['wet_cardboard'], contents: [item(1, { leaking: true })] });
+    const h = { ...closed, used: ['look' as const, 'rotate' as const], visited: ['up:0', 'down:0'] };
+    expect(applyRepair(wet, h, inventoryWith({ sealant: 1 }), 'sealant')).toEqual({
+      ok: false,
+      reason: 'Open the box first.',
+    });
+  });
+
+  it('seals a leaking item in an open box even without wet cardboard', () => {
+    const p = makePackage({ contents: [item(1, { leaking: true })] });
+    const r = applyRepair(p, open, inventoryWith({ sealant: 1 }), 'sealant');
+    expect(r.ok && r.handling.sealed).toEqual([1]);
+    expect(r.ok && r.inventory.supplies.sealant).toBe(0);
+  });
+
+  it('reports nothing fixed when relabeling a contents label that already matches', () => {
+    const p = makePackage({ defects: ['missing_label'], contents: [item(1)] });
+    const printed = { ...open, repaired: ['missing_label' as const], labelItems: [1] };
+    const r = applyRepair(p, printed, inventoryWith({ relabel: 1 }), 'relabel');
+    expect(r.ok && r.fixed).toEqual([]);
+    expect(r.ok && r.handling).toEqual(printed);
   });
 });

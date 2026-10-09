@@ -15,6 +15,7 @@ import type { AddressIssue, DefectId } from './types';
 const day1 = ruleCardForDay(1);
 const day2 = ruleCardForDay(2);
 const day5 = ruleCardForDay(5);
+const day4 = ruleCardForDay(4);
 
 describe('rule cards', () => {
   it('has a card for every day', () => {
@@ -181,5 +182,51 @@ describe('rule card text', () => {
         expect(text, `day ${d} address ${id}`).toMatch(ADDRESS_WORDS[id]);
       }
     }
+  });
+});
+
+describe('weight and label resolution', () => {
+  const item = (id: number, weightKg: number, extra = false) => ({
+    id, name: `t${id}`, art: 'dome' as const, color: '#fff', weightKg, extra,
+  });
+  const heavy = makePackage({
+    defects: ['wrong_weight'],
+    packagingKg: 0.5,
+    declaredWeightKg: 1.4,
+    actualWeightKg: 2.2,
+    contents: [item(1, 0.6), item(2, 0.3), item(3, 0.8, true)],
+  });
+
+  it('treats wrong weight as repairable by throwing away, needing the box open', () => {
+    expect(rejectWorthyProblems(heavy, day4)).toEqual([
+      { source: 'defect', id: 'wrong_weight', repairTool: 'discard', requiresOpen: true },
+    ]);
+    expect(needsOpening(heavy, day4)).toBe(true);
+  });
+
+  it('resolves wrong weight exactly when the weight matches again', () => {
+    expect(isShippable(heavy, newHandling(), day4)).toBe(false);
+    expect(isShippable(heavy, { ...newHandling(), discarded: [3] }, day4)).toBe(true);
+    expect(isShippable(heavy, { ...newHandling(), discarded: [1] }, day4)).toBe(false);
+  });
+
+  const unlabeled = makePackage({
+    defects: ['missing_label'],
+    packagingKg: 0,
+    declaredWeightKg: 0.9,
+    actualWeightKg: 0.9,
+    contents: [item(1, 0.6), item(2, 0.3)],
+  });
+
+  it('needs the label reprinted to match what is inside', () => {
+    expect(isShippable(unlabeled, newHandling(), day5)).toBe(false);
+    const printed = { ...newHandling(), repaired: ['missing_label' as const], labelItems: [1, 2] };
+    expect(isShippable(unlabeled, printed, day5)).toBe(true);
+    expect(isShippable(unlabeled, { ...printed, discarded: [2] }, day5)).toBe(false);
+  });
+
+  it('needs no label when the box has been emptied', () => {
+    const emptied = { ...newHandling(), discarded: [1, 2] };
+    expect(isShippable(unlabeled, emptied, day5)).toBe(true);
   });
 });

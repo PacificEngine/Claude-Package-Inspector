@@ -45,11 +45,14 @@ export function placementOf(pkg: Package, defect: DefectId): Placement {
   return pkg.placements?.[defect] ?? { side: isUndersideDefect(defect) ? 'down' : 'up', face: 0 };
 }
 
-const SHAPE_NOTES: Record<Shape, string> = {
-  cuboid: 'Shape: cuboid. Four sides to rotate; flip it for the underside.',
-  cylinder: 'Shape: cylinder. One round side; flip it for the base.',
-  prism: 'Shape: triangular prism. Three sides to rotate; it cannot be flipped.',
-  tetra: 'Shape: tetrahedron. Four sides to rotate; flip it for four more.',
+const SHAPE_NAMES: Record<Shape, string> = {
+  cuboid: 'cuboid',
+  cylinder: 'cylinder',
+  prism: 'triangular prism',
+  tetra: 'tetrahedron',
 };
 
-export const shapeNote = (kind: PackageKind): string => SHAPE_NOTES[SHAPE_OF_KIND[kind]];
+export const shapeName = (kind: PackageKind): string => SHAPE_NAMES[SHAPE_OF_KIND[kind]];
+
+// The note names the shape only; how it turns is explained on the Shapes tab.
+export const shapeNote = (kind: PackageKind): string => `Shape: ${shapeName(kind)}`;

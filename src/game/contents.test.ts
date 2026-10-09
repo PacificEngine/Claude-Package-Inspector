@@ -5,6 +5,7 @@ import {
   PACKAGING_KG,
   STOWAWAYS,
   currentWeightKg,
+  declaredAfter,
   itemsIn,
   labelMatches,
   legitItemIds,
@@ -75,5 +76,28 @@ describe('what is left in a package', () => {
     expect(labelMatches(pkg, { ...newHandling(), labelItems: [1, 2, 3] })).toBe(true);
     expect(labelMatches(pkg, { ...newHandling(), labelItems: [3, 2, 1] })).toBe(true);
     expect(labelMatches(pkg, { ...newHandling(), labelItems: [1, 2, 3], discarded: [3] })).toBe(false);
+  });
+});
+
+describe('the weight rule counts only the stowaways', () => {
+  it('compares with the declared weight minus legit items thrown away', () => {
+    expect(declaredAfter(pkg, [])).toBe(1.4);
+    expect(declaredAfter(pkg, [1])).toBe(0.8);
+    expect(declaredAfter(pkg, [3])).toBe(1.4); // an extra never counted in the declared weight
+  });
+
+  it('is not fooled by swapping a legit item for an equal-weight stowaway', () => {
+    const swap = makePackage({
+      packagingKg: 0,
+      declaredWeightKg: 1,
+      actualWeightKg: 1.6,
+      contents: [item(1, 0.6), item(2, 0.4), item(3, 0.6, { extra: true })],
+    });
+    expect(weightMatches(swap, { ...newHandling(), discarded: [1] })).toBe(false);
+    expect(weightMatches(swap, { ...newHandling(), discarded: [3] })).toBe(true);
+  });
+
+  it('stays matched when only legit items are thrown away from a package with no stowaway', () => {
+    expect(weightMatches(pkg, { ...newHandling(), discarded: [3, 1] })).toBe(true);
   });
 });

@@ -101,8 +101,16 @@ export const currentWeightKg = (pkg: Package, handling: Handling): number =>
 export const weightIsDeclared = (weightKg: number, declaredKg: number): boolean =>
   Math.abs(weightKg - declaredKg) < 0.05;
 
+// What the label's weight comes to once the legit items the player threw away are left out.
+export function declaredAfter(pkg: Package, discarded: readonly number[]): number {
+  const gone = pkg.contents
+    .filter((i) => discarded.includes(i.id) && !i.extra)
+    .reduce((sum, i) => sum + i.weightKg, 0);
+  return round1(pkg.declaredWeightKg - gone);
+}
+
 export const weightMatches = (pkg: Package, handling: Handling): boolean =>
-  weightIsDeclared(currentWeightKg(pkg, handling), pkg.declaredWeightKg);
+  weightIsDeclared(currentWeightKg(pkg, handling), declaredAfter(pkg, handling.discarded));
 
 // The ids of the items the label on the box was printed for.
 export const legitItemIds = (pkg: Package): number[] =>

@@ -24,10 +24,8 @@ sandbags, a rock) that weigh the difference. The Relabel kit no longer fixes it.
 - **Throw away** removes an item for good. The weight defect is resolved exactly when the
   package's current weight (original weight minus thrown-away items) equals the declared weight
   (within 0.05 kg). The contents list on the label shows which items belong.
-  Any set of thrown-away items that brings the weight back to the declared weight resolves the
-  defect, even if it is not exactly the stowaways (for example swapping an equal-weight legit
-  item). This is accepted: the label's contents list shows which items belong, and a careful
-  player is never punished.
+  The weight is compared with the declared weight minus the legit items thrown away, so exactly
+  the stowaways must go; swapping an equal-weight legit item for a stowaway does not resolve it.
 - Opening is free when wrong weight is the reject-worthy problem (the box must be opened);
   throwing items away is free.
 - *Heavier inside than outside* gets one **impossibly dense marble** item. It stays

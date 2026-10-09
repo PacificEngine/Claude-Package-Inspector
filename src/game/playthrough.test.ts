@@ -25,6 +25,7 @@ interface ShiftMetrics {
   skippedForStock: number;
   wasted: number;
   discarded: number;
+  discardedRestricted: number;
   sealed: number;
   labelsPrinted: number;
 }
@@ -69,11 +70,16 @@ function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftSt
           s = openBox(s).state;
           metrics.opened++;
         }
-        // Throw the stowaways out first, so the label is printed for what is really inside.
+        // Throw the stowaways and restricted items out first, so the label is printed for what is really inside.
         if (hasDiscard) {
-          for (const item of itemsIn(pkg, s.handling).filter((i) => i.extra)) {
+          const restricted = new Set(problems.filter((p) => p.source === 'item').map((p) => p.itemId));
+          const stowaways = problems.some((p) => p.id === 'wrong_weight');
+          for (const item of itemsIn(pkg, s.handling)) {
+            const isRestricted = restricted.has(item.id);
+            if (!isRestricted && !(stowaways && item.extra)) continue;
             s = discardItem(s, item.id).state;
-            metrics.discarded++;
+            if (isRestricted) metrics.discardedRestricted++;
+            else metrics.discarded++;
           }
         }
         const ordered = [...tools].sort((a, b) => Number(a === 'relabel') - Number(b === 'relabel'));
@@ -122,6 +128,7 @@ const freshMetrics = (): ShiftMetrics => ({
   skippedForStock: 0,
   wasted: 0,
   discarded: 0,
+  discardedRestricted: 0,
   sealed: 0,
   labelsPrinted: 0,
 });
@@ -157,6 +164,7 @@ describe('a perfect inspector playing all seven days', () => {
     const metrics = SEEDS.map(playCampaign);
     const total = (key: keyof ShiftMetrics): number => metrics.reduce((sum, m) => sum + m[key], 0);
     expect(total('discarded')).toBeGreaterThan(0);
+    expect(total('discardedRestricted')).toBeGreaterThan(0);
     expect(total('sealed')).toBeGreaterThan(0);
     expect(total('labelsPrinted')).toBeGreaterThan(0);
   });

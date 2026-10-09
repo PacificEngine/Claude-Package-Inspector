@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { newHandling } from '../game/handling';
 import { makePackage } from '../game/testing';
 import type { DefectId } from '../game/types';
-import { bodyRect, insideLayout, itemSlots, labelRect } from './geometry';
-import { itemMarkersFor, markerNoted, markersFor } from './markers';
+import { bodyRect, insideLayout, itemSlots, labelRect, shippingLabelRect } from './geometry';
+import { itemMarkersFor, labelMarkersFor, markerNoted, markersFor } from './markers';
 
 const W = 320;
 const H = 260;
@@ -138,5 +138,43 @@ describe('item markers', () => {
   it('places the marker over the item slot', () => {
     const [m] = itemMarkersFor(pkg, open, W, H);
     expect(m.rect).toEqual(itemSlots(2, W, H)[1].rect);
+  });
+});
+
+describe('label markers', () => {
+  const box = makePackage({ kind: 'box', labelFace: 2 });
+
+  it('offers the shipping label on face 1 and the contents label on its own face', () => {
+    expect(labelMarkersFor(box, front, W, H).map((m) => m.label)).toEqual(['shipping']);
+    expect(labelMarkersFor(box, { ...front, face: 2 }, W, H).map((m) => m.label)).toEqual(['contents']);
+    expect(labelMarkersFor(box, { ...front, face: 1 }, W, H)).toEqual([]);
+  });
+
+  it('offers both on one face when they share it', () => {
+    expect(labelMarkersFor(makePackage({ kind: 'can', labelFace: 0 }), front, W, H).map((m) => m.label)).toEqual([
+      'shipping',
+      'contents',
+    ]);
+  });
+
+  it('offers no label when the box is open or flipped', () => {
+    expect(labelMarkersFor(box, open, W, H)).toEqual([]);
+    expect(labelMarkersFor(box, flipped, W, H)).toEqual([]);
+  });
+
+  it('has no contents label to click while it is missing, but does once it is reprinted', () => {
+    const lost = makePackage({ kind: 'can', defects: ['missing_label'], labelFace: 0 });
+    expect(labelMarkersFor(lost, front, W, H).map((m) => m.label)).toEqual(['shipping']);
+    expect(
+      labelMarkersFor(lost, { ...front, repaired: ['missing_label'] }, W, H).map((m) => m.label),
+    ).toEqual(['shipping', 'contents']);
+  });
+
+  it('places the markers on the label rectangles', () => {
+    const b = bodyRect('box', W, H);
+    const [ship] = labelMarkersFor(box, front, W, H);
+    expect(ship.rect).toEqual(shippingLabelRect('box', b));
+    const [cont] = labelMarkersFor(box, { ...front, face: 2 }, W, H);
+    expect(cont.rect).toEqual(labelRect('box', b));
   });
 });

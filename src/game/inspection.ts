@@ -1,4 +1,4 @@
-import { itemsIn, weightIsDeclared, weightLeft } from './contents';
+import { declaredAfter, itemsIn, weightIsDeclared, weightLeft } from './contents';
 import { DEFECTS } from './defects';
 import { faceKey, isFaceless, placementOf, shapeNote } from './shapes';
 import type { DefectId, Handling, InspectionTool, Package, Side, View } from './types';
@@ -75,12 +75,17 @@ export function cluesFor(
   let weight = pkg.actualWeightKg;
   if (tool === 'scale') {
     weight = weightLeft(pkg, discarded);
-    clues.push(make(null, `Scale reads ${weight} kg (label says ${pkg.declaredWeightKg} kg).`));
+    const declared = declaredAfter(pkg, discarded);
+    const label =
+      declared === pkg.declaredWeightKg
+        ? `${pkg.declaredWeightKg} kg`
+        : `${pkg.declaredWeightKg} kg, ${declared} kg without what you threw away`;
+    clues.push(make(null, `Scale reads ${weight} kg (label says ${label}).`));
   }
   for (const id of pkg.defects) {
     if (repaired.includes(id)) continue;
     // Once the stowaways are out, the scale no longer disagrees with the label.
-    if (tool === 'scale' && id === 'wrong_weight' && weightIsDeclared(weight, pkg.declaredWeightKg)) continue;
+    if (tool === 'scale' && id === 'wrong_weight' && weightIsDeclared(weight, declaredAfter(pkg, discarded))) continue;
     const text = DEFECTS[id].clues[tool];
     if (text) clues.push(make(id, text));
   }

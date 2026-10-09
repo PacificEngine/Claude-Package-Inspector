@@ -13,6 +13,7 @@ import {
   inspect,
   noteDefect,
   openBox,
+  readLabel,
   packagesForDay,
   repair,
   rotateBox,
@@ -454,5 +455,62 @@ describe('weighing, throwing away and leaks', () => {
     const r = stamp(s, 'ship');
     expect(r.state.strikes).toBe(0);
     expect(r.state.earned).toBe(pkg.fee);
+  });
+});
+
+describe('restricted item strikes', () => {
+  it('names the restricted item when a package that holds one is shipped', () => {
+    const p = makePackage({
+      kind: 'prism',
+      packagingKg: 0.4,
+      declaredWeightKg: 1,
+      actualWeightKg: 1,
+      contents: [{ id: 1, name: 'candles', art: 'sticks' as const, color: '#f2e2b0', weightKg: 0.6 }],
+    });
+    const r = stamp(shiftWith([p, p], 4), 'ship');
+    expect(r.state.strikes).toBe(1);
+    expect(r.message).toContain('restricted candles');
+  });
+});
+
+describe('readLabel', () => {
+  const box = makePackage({ kind: 'box', labelFace: 2 });
+  const withRotate = (p = box) => shiftWith([p], 3, tools('rotate'));
+
+  it('reads the shipping label face up on face 1', () => {
+    const r = readLabel(withRotate(), 'shipping');
+    expect(r.state.handling.addressRead).toBe(true);
+    expect(r.message).toBe('You read the shipping label.');
+  });
+
+  it('cannot read the shipping label from another side', () => {
+    const turned = rotateBox(withRotate()).state;
+    const r = readLabel(turned, 'shipping');
+    expect(r.message).toBe('The shipping label is on the first side.');
+    expect(r.state.handling.addressRead).toBe(false);
+  });
+
+  it('reads the contents label only on the face it sits on', () => {
+    let s = withRotate();
+    expect(readLabel(s, 'contents').message).toBe('The contents label is on another side.');
+    s = rotateBox(rotateBox(s).state).state; // face 3 (index 2)
+    const r = readLabel(s, 'contents');
+    expect(r.state.handling.contentsRead).toBe(true);
+    expect(r.message).toBe('You read the contents label.');
+  });
+
+  it('finds no contents label when it is missing, and reads a reprinted one', () => {
+    const unlabeled = makePackage({ kind: 'box', defects: ['missing_label'], labelFace: 0 });
+    const s = shiftWith([unlabeled], 5);
+    expect(readLabel(s, 'contents').message).toBe('There is no contents label.');
+    const printed = { ...s, handling: { ...s.handling, repaired: ['missing_label' as const] } };
+    expect(readLabel(printed, 'contents').state.handling.contentsRead).toBe(true);
+  });
+
+  it('needs the box closed and face up', () => {
+    const open = openBox(shiftWith([box, box], 3)).state;
+    expect(readLabel(open, 'shipping').message).toBe('Close the box first.');
+    const flipped = flipBox(withRotate()).state;
+    expect(readLabel(flipped, 'shipping').message).toBe('Turn the box face up first.');
   });
 });

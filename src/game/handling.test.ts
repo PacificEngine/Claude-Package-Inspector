@@ -11,6 +11,8 @@ describe('newHandling', () => {
       visited: ['up:0'],
       used: ['look'],
       repaired: [],
+      addressRead: false,
+      contentsRead: false,
       relabeled: false,
       notes: ['shape'],
       discarded: [],

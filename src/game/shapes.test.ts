@@ -6,6 +6,7 @@ import {
   faceKey,
   isUndersideDefect,
   placementOf,
+  shapeName,
   shapeNote,
 } from './shapes';
 import type { PackageKind } from './types';
@@ -47,11 +48,12 @@ describe('shapes', () => {
     expect(placementOf(pkg, 'torn_tape')).toEqual({ side: 'up', face: 2 });
   });
 
-  it('describes each shape in the first note', () => {
-    expect(shapeNote('box')).toBe('Shape: cuboid. Four sides to rotate; flip it for the underside.');
-    expect(shapeNote('parcel')).toBe(shapeNote('box'));
-    expect(shapeNote('can')).toBe('Shape: cylinder. One round side; flip it for the base.');
-    expect(shapeNote('prism')).toBe('Shape: triangular prism. Three sides to rotate; it cannot be flipped.');
-    expect(shapeNote('tetra')).toBe('Shape: tetrahedron. Four sides to rotate; flip it for four more.');
+  it('names only the shape in the first note', () => {
+    expect(shapeNote('box')).toBe('Shape: cuboid');
+    expect(shapeNote('parcel')).toBe('Shape: cuboid');
+    expect(shapeNote('can')).toBe('Shape: cylinder');
+    expect(shapeNote('prism')).toBe('Shape: triangular prism');
+    expect(shapeNote('tetra')).toBe('Shape: tetrahedron');
+    expect(shapeName('jar')).toBe('cylinder');
   });
 });

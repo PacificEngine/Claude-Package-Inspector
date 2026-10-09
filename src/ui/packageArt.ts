@@ -4,7 +4,7 @@ import { faceCount } from '../game/shapes';
 import type { DefectId, Handling, Package, PackageKind } from '../game/types';
 import type { PackageAction } from './animation';
 import { contentsFor, type Contents, type ContentsArt } from './contents';
-import { bodyRect, insideLayout, itemSlots, labelRect, patchRect, voidRect, type Rect } from './geometry';
+import { bodyRect, insideLayout, itemSlots, labelRect, patchRect, shippingLabelRect, voidRect, type Rect } from './geometry';
 
 const BODY_COLOR: Record<PackageKind, string> = {
   box: '#c9a26b',
@@ -309,6 +309,22 @@ function drawCaption(ctx: CanvasRenderingContext2D, pkg: Package, handling: Hand
 
 // ---- front ----------------------------------------------------------------------
 
+// A white label with a small bold mark and two grey lines of "text".
+function drawLabelCard(ctx: CanvasRenderingContext2D, r: Rect, mark: string): void {
+  ctx.save();
+  ctx.fillStyle = '#fdfdf5';
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.fillStyle = '#4a5568';
+  ctx.font = `bold ${Math.max(8, Math.min(11, r.h * 0.3))}px system-ui, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(mark, r.x + r.w * 0.08, r.y + r.h * 0.1, r.w * 0.84);
+  ctx.fillStyle = '#718096';
+  ctx.fillRect(r.x + r.w * 0.08, r.y + r.h * 0.5, r.w * 0.84, 3);
+  ctx.fillRect(r.x + r.w * 0.08, r.y + r.h * 0.76, r.w * 0.55, 3);
+  ctx.restore();
+}
+
 function drawFront(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling: Handling): void {
   const visible = visibleDefects(pkg, handling, 'front');
   ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 1 - 0.06 * (handling.face % 4));
@@ -323,21 +339,20 @@ function drawFront(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handlin
 
   if (pkg.kind === 'prism') drawPrismLook(ctx, b);
 
-  const label = labelRect(pkg.kind, b);
-  if (visible.includes('missing_label')) {
-    // An empty outline where the contents label should be, so the gap is something to point at.
-    ctx.save();
-    ctx.setLineDash([6, 4]);
-    ctx.strokeStyle = 'rgba(60, 40, 20, 0.7)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(label.x, label.y, label.w, label.h);
-    ctx.restore();
-  } else {
-    ctx.fillStyle = '#fdfdf5';
-    ctx.fillRect(label.x, label.y, label.w, label.h);
-    ctx.fillStyle = '#718096';
-    ctx.fillRect(label.x + label.w * 0.1, label.y + label.h * 0.3, label.w * 0.8, 3);
-    ctx.fillRect(label.x + label.w * 0.1, label.y + label.h * 0.65, label.w * 0.55, 3);
+  if (handling.face === 0) drawLabelCard(ctx, shippingLabelRect(pkg.kind, b), 'TO');
+  if (handling.face === pkg.labelFace) {
+    const label = labelRect(pkg.kind, b);
+    if (visible.includes('missing_label')) {
+      // An empty outline where the contents label should be, so the gap is something to point at.
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(60, 40, 20, 0.7)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(label.x, label.y, label.w, label.h);
+      ctx.restore();
+    } else {
+      drawLabelCard(ctx, label, 'CONTENTS');
+    }
   }
 
   for (const id of visible) MARKS[id]?.(ctx, b);

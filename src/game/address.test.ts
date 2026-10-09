@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALL_ADDRESS_ISSUES,
+  EVERYDAY_ZIPS,
   addressIssues,
   addressLines,
   generateAddress,
@@ -40,6 +41,15 @@ describe('addresses', () => {
       '12 Elm Street',
       'Maplewood 10001',
       'Return: 9 Oak Road, Riverton',
+    ]);
+  });
+
+  it('lists the everyday cities with the ZIP codes that match them', () => {
+    expect(EVERYDAY_ZIPS).toEqual([
+      { city: 'Maplewood', zip: '10001' },
+      { city: 'Riverton', zip: '20002' },
+      { city: 'Port Calloway', zip: '30003' },
+      { city: 'Dunmere', zip: '40004' },
     ]);
   });
 });

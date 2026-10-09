@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { CATALOG } from './contents';
 import { newHandling } from './handling';
+import { kindsForDay } from './packages';
 import {
   LAST_DAY,
   isCorrectVerdict,
@@ -228,5 +230,58 @@ describe('weight and label resolution', () => {
   it('needs no label when the box has been emptied', () => {
     const emptied = { ...newHandling(), discarded: [1, 2] };
     expect(isShippable(unlabeled, emptied, day5)).toBe(true);
+  });
+});
+
+describe('restricted items', () => {
+  const item = (id: number, name: string, weightKg = 0.3) => ({
+    id, name, art: 'dome' as const, color: '#fff', weightKg,
+  });
+  const day4 = ruleCardForDay(4);
+  const candlePackage = makePackage({
+    kind: 'prism',
+    contents: [item(1, 'candles'), item(2, 'toy tent')],
+    packagingKg: 0.4,
+    declaredWeightKg: 1,
+    actualWeightKg: 1,
+  });
+
+  it('lists restricted items by day', () => {
+    expect([1, 2, 3].map((d) => ruleCardForDay(d).restrictedItems)).toEqual([[], [], []]);
+    expect(ruleCardForDay(4).restrictedItems).toEqual(['candles']);
+    expect(ruleCardForDay(5).restrictedItems).toEqual(['honey', 'cheese wedges']);
+    expect(ruleCardForDay(6).restrictedItems).toEqual(['peaches', 'dice']);
+    expect(ruleCardForDay(7).restrictedItems).toEqual(['candles', 'rubber ducks', 'strawberry jam']);
+  });
+
+  it('makes a restricted item a problem that throwing it away fixes, needing the box open', () => {
+    expect(rejectWorthyProblems(candlePackage, day4)).toEqual([
+      { source: 'item', id: 'restricted_item', repairTool: 'discard', requiresOpen: true, itemId: 1 },
+    ]);
+    expect(needsOpening(candlePackage, day4)).toBe(true);
+    expect(rejectWorthyProblems(candlePackage, ruleCardForDay(3))).toEqual([]);
+  });
+
+  it('is resolved once the restricted item is thrown away', () => {
+    expect(isShippable(candlePackage, newHandling(), day4)).toBe(false);
+    expect(isShippable(candlePackage, { ...newHandling(), discarded: [1] }, day4)).toBe(true);
+    expect(isShippable(candlePackage, { ...newHandling(), discarded: [2] }, day4)).toBe(false);
+  });
+
+  it('names every restricted item on the card text', () => {
+    for (let d = 4; d <= 7; d++) {
+      const card = ruleCardForDay(d);
+      const text = card.lines.join(' ').toLowerCase();
+      for (const name of card.restrictedItems) expect(text, `${d} ${name}`).toContain(name);
+    }
+  });
+
+  it('only restricts items that can turn up that day', () => {
+    for (let d = 4; d <= 7; d++) {
+      const names = new Set(
+        kindsForDay(d).flatMap((kind) => CATALOG[kind].map((c) => c.name)),
+      );
+      for (const name of ruleCardForDay(d).restrictedItems) expect(names.has(name), `${d} ${name}`).toBe(true);
+    }
   });
 });

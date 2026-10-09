@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bodyRect, insideLayout, itemSlots, patchRect } from './geometry';
+import { bodyRect, insideLayout, itemSlots, labelRect, patchRect, shippingLabelRect } from './geometry';
 
 describe('patchRect', () => {
   it('keeps the usual patch near the top-left of a box', () => {
@@ -67,5 +67,29 @@ describe('itemSlots art fit', () => {
   it('keeps one or two items at full size', () => {
     expect(itemSlots(1, 320, 260)[0].scale).toBe(1.5);
     expect(itemSlots(2, 320, 260)[0].scale).toBe(1.5);
+  });
+});
+
+describe('label rectangles', () => {
+  it('puts the shipping label above the contents label, inside the body, for every kind', () => {
+    for (const kind of ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra'] as const) {
+      const b = bodyRect(kind, 320, 260);
+      const ship = shippingLabelRect(kind, b);
+      const cont = labelRect(kind, b);
+      expect(ship.x, kind).toBeGreaterThanOrEqual(b.x);
+      expect(ship.x + ship.w, kind).toBeLessThanOrEqual(b.x + b.w);
+      expect(ship.y + ship.h, kind).toBeLessThanOrEqual(cont.y);
+      expect(cont.y + cont.h, kind).toBeLessThanOrEqual(b.y + b.h);
+    }
+  });
+
+  it('keeps the tetrahedron labels inside the triangle', () => {
+    const b = bodyRect('tetra', 320, 260);
+    for (const r of [shippingLabelRect('tetra', b), labelRect('tetra', b)]) {
+      // half-width of the triangle at the top edge of each rectangle
+      const half = (b.w / 2) * ((r.y - b.y) / b.h);
+      expect(r.x).toBeGreaterThanOrEqual(b.x + b.w / 2 - half);
+      expect(r.x + r.w).toBeLessThanOrEqual(b.x + b.w / 2 + half);
+    }
   });
 });

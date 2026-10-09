@@ -180,3 +180,33 @@ describe('package contents', () => {
     expect(leakers).toBeGreaterThan(0);
   });
 });
+
+describe('the contents label face', () => {
+  it('is face 1 on day 1 and on shapes with one up face', () => {
+    for (const p of sample(1, 300)) expect(p.labelFace).toBe(0);
+    for (const day of [2, 5, 7]) {
+      for (const p of sample(day, 300)) {
+        expect(p.labelFace).toBeGreaterThanOrEqual(0);
+        expect(p.labelFace).toBeLessThan(faceCount(p.kind, 'up'));
+        if (faceCount(p.kind, 'up') === 1) expect(p.labelFace).toBe(0);
+      }
+    }
+  });
+
+  it('spreads over the up faces from day 2', () => {
+    const faces = new Set(sample(4, 600).map((p) => p.labelFace));
+    expect(faces.has(1) || faces.has(2) || faces.has(3)).toBe(true);
+  });
+
+  it('puts a missing contents label on the face the label belongs on', () => {
+    let seen = 0;
+    for (const day of [2, 4, 7]) {
+      for (const p of sample(day, 600)) {
+        if (!p.defects.includes('missing_label')) continue;
+        seen++;
+        expect(p.placements?.missing_label).toEqual({ side: 'up', face: p.labelFace });
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+});

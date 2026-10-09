@@ -14,7 +14,7 @@ import {
   unresolvedProblems,
   type RuleCard,
 } from './rules';
-import { faceCount, faceKey } from './shapes';
+import { faceKey, orient, ringLength, rotateDelta, shownFace } from './shapes';
 import type {
   AddressIssue,
   DefectId,
@@ -22,6 +22,7 @@ import type {
   InspectionTool,
   Inventory,
   Package,
+  PackageKind,
   RepairTool,
   Side,
   Verdict,
@@ -102,20 +103,30 @@ const withVisited = (visited: string[], side: Side, face: number): string[] => {
   return visited.includes(key) ? visited : [...visited, key];
 };
 
+// Moves the package to a new orientation and remembers the face it now shows.
+function reorient(s: ShiftState, kind: PackageKind, flipPos: number, turn: number): ShiftState {
+  const o = orient(kind, flipPos, turn);
+  const side: Side = o.flipped ? 'down' : 'up';
+  return {
+    ...s,
+    handling: { ...s.handling, ...o, visited: withVisited(s.handling.visited, side, o.face) },
+  };
+}
+
 export function readLabel(s: ShiftState, which: 'shipping' | 'contents'): ActionResult {
   const pkg = currentPackage(s);
   if (!pkg) return idle(s);
   if (s.handling.opened) return { state: s, message: 'Close the box first.' };
-  if (s.handling.flipped) return { state: s, message: 'Turn the box face up first.' };
+  const shown = shownFace(pkg.kind, s.handling.flipPos, s.handling.turn).placement;
+  const labelFace = which === 'shipping' ? 0 : pkg.labelFace;
+  if (shown.side !== 'up' || shown.face !== labelFace) {
+    return { state: s, message: 'That label is not on this side.' };
+  }
   if (which === 'shipping') {
-    if (s.handling.face !== 0) return { state: s, message: 'The shipping label is on the first side.' };
     return {
       state: { ...s, handling: { ...s.handling, addressRead: true } },
       message: 'You read the shipping label.',
     };
-  }
-  if (s.handling.face !== pkg.labelFace) {
-    return { state: s, message: 'The contents label is on another side.' };
   }
   if (pkg.defects.includes('missing_label') && !s.handling.repaired.includes('missing_label')) {
     return { state: s, message: 'There is no contents label.' };
@@ -131,17 +142,8 @@ export function rotateBox(s: ShiftState): ActionResult {
   if (!pkg) return idle(s);
   if (!s.inventory.tools.includes('rotate')) return { state: s, message: 'You do not own that tool.' };
   if (s.handling.opened) return { state: s, message: 'Close the box first.' };
-  const side: Side = s.handling.flipped ? 'down' : 'up';
-  const count = faceCount(pkg.kind, side);
-  if (count <= 1) return { state: s, message: 'This shape has only one side to turn.' };
-  const face = (s.handling.face + 1) % count;
-  return {
-    state: {
-      ...s,
-      handling: { ...s.handling, face, visited: withVisited(s.handling.visited, side, face) },
-    },
-    message: `You turn it to ${side === 'down' ? 'underside' : 'side'} ${face + 1} of ${count}.`,
-  };
+  const turn = s.handling.turn + rotateDelta(pkg.kind, s.handling.flipPos);
+  return { state: reorient(s, pkg.kind, s.handling.flipPos, turn), message: 'You turn the package.' };
 }
 
 export function flipBox(s: ShiftState): ActionResult {
@@ -149,23 +151,12 @@ export function flipBox(s: ShiftState): ActionResult {
   if (!pkg) return idle(s);
   if (!s.inventory.tools.includes('rotate')) return { state: s, message: 'You do not own that tool.' };
   if (s.handling.opened) return { state: s, message: 'Close the box first.' };
-  if (!s.handling.flipped && faceCount(pkg.kind, 'down') === 0) {
-    return { state: s, message: 'This shape cannot be flipped.' };
-  }
-  const flipped = !s.handling.flipped;
+  if (ringLength(pkg.kind) === 1) return { state: s, message: 'This shape cannot be flipped.' };
+  const flipped = reorient(s, pkg.kind, s.handling.flipPos + 1, s.handling.turn);
   const used = s.handling.used.includes('rotate') ? s.handling.used : [...s.handling.used, 'rotate' as const];
   return {
-    state: {
-      ...s,
-      handling: {
-        ...s.handling,
-        flipped,
-        face: 0,
-        used,
-        visited: withVisited(s.handling.visited, flipped ? 'down' : 'up', 0),
-      },
-    },
-    message: flipped ? 'You flip the box over.' : 'You turn the box back over.',
+    state: { ...flipped, handling: { ...flipped.handling, used } },
+    message: 'You flip the package over.',
   };
 }
 
@@ -188,7 +179,7 @@ export function inspect(s: ShiftState, tool: InspectionTool): ActionResult {
   if (!pkg) return idle(s);
   if (tool === 'rotate') return { state: s, message: 'Use Flip box for that.' };
   if (!s.inventory.tools.includes(tool)) return { state: s, message: 'You do not own that tool.' };
-  if (viewOf(s.handling) !== 'front') {
+  if (s.handling.opened || s.handling.flipPos !== 0) {
     return { state: s, message: 'Close the box and turn it face up first.' };
   }
   if (s.handling.used.includes(tool)) return { state: s, message: 'You already checked that.' };
@@ -212,7 +203,7 @@ export function openBox(s: ShiftState): ActionResult {
   const pkg = currentPackage(s);
   if (!pkg) return idle(s);
   if (s.handling.opened) return { state: s, message: 'Already open.' };
-  if (s.handling.flipped) return { state: s, message: 'Flip the box back first.' };
+  if (s.handling.flipPos !== 0) return { state: s, message: 'Turn the box upright first.' };
   // Opening a box that did not need it is fined, but only once however often it is reopened.
   const fine = needsOpening(pkg, s.card) || s.handling.fined ? 0 : openingFine(pkg);
   return {

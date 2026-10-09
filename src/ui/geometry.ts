@@ -46,10 +46,27 @@ export function voidRect(kind: PackageKind, b: Rect): Rect {
   return { x: b.x + b.w * 0.14, y: b.y + b.h * 0.16, w: b.w * 0.72, h: b.h * 0.68 };
 }
 
-// Where an applied repair patch goes. A tetrahedron's sits lower, where the triangle is wide enough.
-export function patchRect(kind: PackageKind, b: Rect): Rect {
-  if (kind === 'tetra') return { x: b.x + b.w * 0.4, y: b.y + b.h * 0.45, w: b.w * 0.2, h: 14 };
-  return { x: b.x + b.w * 0.1, y: b.y + b.h * 0.1, w: b.w * 0.3, h: 14 };
+// The square the top and bottom of a package are drawn in (a disk for a cylinder).
+export function faceSquare(_kind: PackageKind, b: Rect): Rect {
+  const side = Math.min(b.w, b.h);
+  return { x: b.x + (b.w - side) / 2, y: b.y + (b.h - side) / 2, w: side, h: side };
+}
+
+// Turns a rectangle clockwise by whole quarter turns about a point.
+export function rotateRect(r: Rect, cx: number, cy: number, quarters: number): Rect {
+  const q = ((quarters % 4) + 4) % 4;
+  let dx = r.x - cx;
+  let dy = r.y - cy;
+  let w = r.w;
+  let h = r.h;
+  for (let i = 0; i < q; i++) {
+    const nx = -(dy + h);
+    const ny = dx;
+    dx = nx;
+    dy = ny;
+    [w, h] = [h, w];
+  }
+  return { x: cx + dx + 0, y: cy + dy + 0, w, h };
 }
 
 // The cutaway of the open box: a back wall with the floor near its bottom.
@@ -90,4 +107,11 @@ export function itemSlots(count: number, width: number, height: number): ItemSlo
       rect: { x: x - gap / 2, y: top, w: gap, h: floorY + 30 - top },
     };
   });
+}
+
+// Moves a rectangle the least distance needed to lie inside the bounds (centred if it is larger).
+export function clampInside(r: Rect, bounds: Rect): Rect {
+  const fit = (pos: number, size: number, lo: number, span: number): number =>
+    size >= span ? lo + (span - size) / 2 : Math.min(Math.max(pos, lo), lo + span - size);
+  return { ...r, x: fit(r.x, r.w, bounds.x, bounds.w), y: fit(r.y, r.h, bounds.y, bounds.h) };
 }

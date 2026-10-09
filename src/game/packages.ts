@@ -3,7 +3,7 @@ import { CATALOG, MARBLE, PACKAGING_KG, STOWAWAYS, round1, type Item } from './c
 import { DEFECTS } from './defects';
 import type { Rng } from './rng';
 import type { RuleCard } from './rules';
-import { SURFACE_DEFECTS, faceCount, isUndersideDefect } from './shapes';
+import { SURFACE_DEFECTS, faceCount, isUndersideDefect, sideCount } from './shapes';
 import type { DefectId, Package, PackageKind, Placement } from './types';
 
 const BASE_KINDS: readonly PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube'];
@@ -18,8 +18,12 @@ function placeDefects(rng: Rng, kind: PackageKind, defects: DefectId[], day: num
   if (day < 2) return undefined;
   const placements: Partial<Record<DefectId, Placement>> = {};
   for (const id of defects) {
-    if (SURFACE_DEFECTS.includes(id)) {
-      placements[id] = { side: 'up', face: rng.int(faceCount(kind, 'up')) };
+    if (id === 'torn_tape') {
+      // The tape seals the top of a box or parcel; elsewhere it is on a side.
+      const top = kind === 'box' || kind === 'parcel';
+      placements[id] = { side: 'up', face: top ? sideCount(kind) : rng.int(sideCount(kind)) };
+    } else if (SURFACE_DEFECTS.includes(id)) {
+      placements[id] = { side: 'up', face: rng.int(sideCount(kind)) };
     } else if (isUndersideDefect(id) && faceCount(kind, 'down') > 0) {
       placements[id] = { side: 'down', face: rng.int(faceCount(kind, 'down')) };
     }
@@ -77,8 +81,8 @@ export function generatePackage(rng: Rng, id: number, card: RuleCard): Package {
   }
 
   const placed = placeDefects(rng, kind, defects, card.day);
-  const upFaces = faceCount(kind, 'up');
-  const labelFace = card.day >= 2 && upFaces > 1 ? rng.int(upFaces) : 0;
+  const sides = sideCount(kind);
+  const labelFace = card.day >= 2 && sides > 1 ? rng.int(sides) : 0;
   // A missing contents label is missing from the face the label belongs on.
   const placements =
     defects.includes('missing_label') && card.day >= 2

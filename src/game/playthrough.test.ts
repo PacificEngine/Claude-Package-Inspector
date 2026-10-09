@@ -15,7 +15,7 @@ import {
   type ShiftState,
 } from './shift';
 import type { RepairTool } from './types';
-import { faceCount } from './shapes';
+import { ringLength, sideCount } from './shapes';
 import { unlockedItems } from './shop';
 
 interface ShiftMetrics {
@@ -50,19 +50,13 @@ function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftSt
         for (const tool of s.inventory.tools) {
           if (tool !== 'look' && tool !== 'rotate') s = inspect(s, tool).state;
         }
-        // Reveal the back, then return the box face up.
+        // Show every face, then finish a full circuit so the box is upright and closed.
         if (s.inventory.tools.includes('rotate')) {
-          const sweep = (): void => {
-            // Show every face on the side that is showing; a full turn returns to the face we started on.
-            const side = s.handling.flipped ? 'down' : 'up';
-            for (let i = 0; i < faceCount(pkg.kind, side); i++) s = rotateBox(s).state;
-          };
-          sweep(); // up faces (a full turn returns to face 1)
-          const flipped = flipBox(s);
-          if (flipped.state.handling.flipped) {
-            s = flipped.state;
-            sweep(); // down faces
-            s = flipBox(s).state; // back face up
+          const ring = ringLength(pkg.kind);
+          const turns = sideCount(pkg.kind);
+          for (let pos = 0; pos < ring; pos++) {
+            for (let i = 0; i < turns; i++) s = rotateBox(s).state; // each side, or a harmless spin on the top and bottom
+            if (ring > 1) s = flipBox(s).state;
           }
         }
         // Exterior-only repairs (tape on tape or a dent) are done with the box closed.

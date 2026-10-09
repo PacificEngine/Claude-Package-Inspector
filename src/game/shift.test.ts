@@ -22,7 +22,7 @@ import {
   type ShiftState,
 } from './shift';
 import { goodAddress, inventoryWith, makePackage } from './testing';
-import type { InspectionTool, Package } from './types';
+import type { InspectionTool, Package, PackageKind } from './types';
 
 function shiftWith(queue: Package[], day = 1, inventory = newInventory()): ShiftState {
   return { ...startShift(day, inventory, 1), card: ruleCardForDay(day), queue, index: 0 };
@@ -119,7 +119,7 @@ describe('inspect', () => {
   it('uses an owned tool and surfaces its clues', () => {
     const inv = inventoryWith({}, ['look', 'rotate']);
     const bottomless = makePackage({ defects: ['bottomless'] });
-    const r = flipBox(shiftWith([bottomless], 3, inv));
+    const r = flipBox(flipBox(flipBox(shiftWith([bottomless], 3, inv)).state).state);
     expect(r.state.handling.used).toEqual(['look', 'rotate']);
     const noted = noteDefect(r.state, 'bottomless', 'back').state;
     expect(currentNotes(noted).map((c) => c.text).join(' ')).toMatch(/no bottom/);
@@ -160,7 +160,7 @@ describe('repair', () => {
   it('needs the box opened first', () => {
     const inv = inventoryWith({ tape: 1 }, ['look', 'rotate']);
     let s = shiftWith([bottomlessBox], 2, inv);
-    s = flipBox(s).state;
+    for (let i = 0; i < 3; i++) s = flipBox(s).state; // to the bottom
     const r = repair(s, 'tape');
     expect(r.message).toBe('Open the box first.');
   });
@@ -203,28 +203,6 @@ describe('closeBox', () => {
     s = closeBox(s).state;
     s = openBox(s).state;
     expect(s.fines).toBe(40);
-  });
-});
-
-describe('flipBox', () => {
-  it('needs the rotate tool', () => {
-    expect(flipBox(shiftWith([clean])).message).toBe('You do not own that tool.');
-  });
-
-  it('shows the back, counts as using the tool, and flips back again', () => {
-    const s0 = shiftWith([clean], 3, tools('rotate'));
-    const back = flipBox(s0).state;
-    expect(back.handling.flipped).toBe(true);
-    expect(back.handling.used).toEqual(['look', 'rotate']);
-    const front = flipBox(back).state;
-    expect(front.handling.flipped).toBe(false);
-    expect(front.handling.used).toEqual(['look', 'rotate']);
-  });
-
-  it('is refused while the box is open, and opening is refused while flipped', () => {
-    const s0 = shiftWith([clean], 3, tools('rotate'));
-    expect(flipBox(openBox(s0).state).message).toBe('Close the box first.');
-    expect(openBox(flipBox(s0).state).message).toBe('Flip the box back first.');
   });
 });
 
@@ -316,78 +294,113 @@ describe('shipping needs a closed box', () => {
   });
 });
 
-describe('rotateBox', () => {
-  const cuboid = makePackage({ kind: 'box' });
-  const withRotate = (pkg = cuboid) => shiftWith([pkg], 3, tools('rotate'));
+describe('flip and rotate follow the orientation rules', () => {
+  const start = (kind: PackageKind = 'box') => shiftWith([makePackage({ kind })], 3, tools('rotate'));
+  const faceOf = (s: ShiftState) =>
+    `${s.handling.flipped ? 'down' : 'up'}:${s.handling.face}${s.handling.upsideDown ? ' upside-down' : ''}`;
+  const press = (s: ShiftState, ...moves: Array<'flip' | 'rotate'>) =>
+    moves.reduce((st, m) => (m === 'flip' ? flipBox(st) : rotateBox(st)).state, s);
 
-  it('needs the rotate tool', () => {
-    expect(rotateBox(shiftWith([cuboid])).message).toBe('You do not own that tool.');
+  it('needs the rotate tool, and the box closed', () => {
+    expect(rotateBox(shiftWith([makePackage()])).message).toBe('You do not own that tool.');
+    expect(flipBox(shiftWith([makePackage()])).message).toBe('You do not own that tool.');
+    expect(rotateBox(openBox(start()).state).message).toBe('Close the box first.');
+    expect(flipBox(openBox(start()).state).message).toBe('Close the box first.');
   });
 
-  it('is refused while the box is open', () => {
-    expect(rotateBox(openBox(withRotate()).state).message).toBe('Close the box first.');
+  it('flips a box: face 1, top, upside-down face 3, bottom, face 1', () => {
+    const s0 = start();
+    const seen = [s0, press(s0, 'flip'), press(s0, 'flip', 'flip'), press(s0, 'flip', 'flip', 'flip'), press(s0, 'flip', 'flip', 'flip', 'flip')].map(faceOf);
+    expect(seen).toEqual(['up:0', 'up:4', 'up:2 upside-down', 'down:0', 'up:0']);
   });
 
-  it('turns through the four sides of a cuboid and wraps around', () => {
-    let s = withRotate();
-    const seen: number[] = [];
-    for (let i = 0; i < 5; i++) {
-      s = rotateBox(s).state;
-      seen.push(s.handling.face);
-    }
-    expect(seen).toEqual([1, 2, 3, 0, 1]);
-    expect(s.handling.visited).toEqual(['up:0', 'up:1', 'up:2', 'up:3']);
+  it('flips a box from face 2 the same way', () => {
+    const s0 = press(start(), 'rotate');
+    expect(faceOf(s0)).toBe('up:1');
+    expect(faceOf(press(s0, 'flip', 'flip'))).toBe('up:3 upside-down');
   });
 
-  it('says so when a shape has only one side', () => {
-    const can = makePackage({ kind: 'can' });
-    const r = rotateBox(withRotate(can));
-    expect(r.message).toBe('This shape has only one side to turn.');
-    expect(r.state.handling.face).toBe(0);
+  it('flips a cylinder: side, top, upside-down side, bottom, side', () => {
+    const s0 = start('can');
+    expect([s0, press(s0, 'flip'), press(s0, 'flip', 'flip'), press(s0, 'flip', 'flip', 'flip'), press(s0, 'flip', 'flip', 'flip', 'flip')].map(faceOf)).toEqual([
+      'up:0',
+      'up:1',
+      'up:0 upside-down',
+      'down:0',
+      'up:0',
+    ]);
   });
 
-  it('turns through three sides on a prism and four on a tetrahedron', () => {
-    let p = withRotate(makePackage({ kind: 'prism' }));
-    p = rotateBox(rotateBox(rotateBox(p).state).state).state;
-    expect(p.handling.face).toBe(0);
-    let t = withRotate(makePackage({ kind: 'tetra' }));
-    for (let i = 0; i < 3; i++) t = rotateBox(t).state;
-    expect(t.handling.face).toBe(3);
+  it('rotating on the top changes which side comes next, and on the bottom it is reversed', () => {
+    // face 1, top, rotate, flip -> upside-down face 4, flip -> bottom, rotate, flip -> face 1
+    let s = start();
+    s = press(s, 'flip', 'rotate');
+    expect(faceOf(s)).toBe('up:4'); // still the top
+    s = press(s, 'flip');
+    expect(faceOf(s)).toBe('up:3 upside-down');
+    s = press(s, 'flip', 'rotate');
+    expect(faceOf(s)).toBe('down:0'); // still the bottom
+    s = press(s, 'flip');
+    expect(faceOf(s)).toBe('up:0');
   });
 
-  it('rotates the down faces of a flipped tetrahedron', () => {
-    let t = flipBox(withRotate(makePackage({ kind: 'tetra' }))).state;
-    t = rotateBox(rotateBox(t).state).state;
-    expect(t.handling.face).toBe(2);
-    expect(t.handling.visited).toEqual(['up:0', 'down:0', 'down:1', 'down:2']);
-  });
-});
-
-describe('flipBox with faces', () => {
-  it('shows face 1 of the other side and remembers it was seen', () => {
-    let s = shiftWith([makePackage({ kind: 'tetra' })], 6, tools('rotate'));
-    s = rotateBox(rotateBox(s).state).state; // up face 3
-    s = flipBox(s).state;
-    expect(s.handling.flipped).toBe(true);
-    expect(s.handling.face).toBe(0);
-    expect(s.handling.visited).toContain('down:0');
-    s = flipBox(s).state;
-    expect(s.handling.flipped).toBe(false);
-    expect(s.handling.face).toBe(0);
+  it('rotating upside-down stays upside-down and shows another side', () => {
+    const upside = press(start(), 'flip', 'flip');
+    expect(faceOf(upside)).toBe('up:2 upside-down');
+    expect(faceOf(press(upside, 'rotate'))).toBe('up:1 upside-down');
+    expect(faceOf(press(upside, 'rotate', 'rotate'))).toBe('up:0 upside-down');
   });
 
-  it('says underside when turning the down side, and side on the up side', () => {
-    let s = shiftWith([makePackage({ kind: 'tetra' })], 6, tools('rotate'));
-    expect(rotateBox(s).message).toBe('You turn it to side 2 of 4.');
-    s = flipBox(s).state;
-    expect(rotateBox(s).message).toBe('You turn it to underside 2 of 4.');
+  it('rotating on a side steps through the sides and wraps', () => {
+    const s0 = start();
+    expect([1, 2, 3, 4, 5].map((n) => faceOf(press(s0, ...Array<'rotate'>(n).fill('rotate'))))).toEqual([
+      'up:1',
+      'up:2',
+      'up:3',
+      'up:0',
+      'up:1',
+    ]);
   });
 
-  it('refuses a shape with no underside', () => {
-    const s = shiftWith([makePackage({ kind: 'prism' })], 4, tools('rotate'));
-    const r = flipBox(s);
-    expect(r.message).toBe('This shape cannot be flipped.');
-    expect(r.state.handling.flipped).toBe(false);
+  it('records every face shown as seen', () => {
+    const s = press(start(), 'flip', 'flip', 'flip');
+    expect(s.handling.visited).toEqual(['up:0', 'up:4', 'up:2', 'down:0']);
+  });
+
+  it('never refuses a rotate that has nowhere new to show, and gives away no numbers', () => {
+    const can = press(start('can'), 'rotate');
+    expect(rotateBox(start('can')).message).toBe('You turn the package.');
+    expect(flipBox(start('can')).message).toBe('You flip the package over.');
+    expect(faceOf(can)).toBe('up:0');
+    expect(can.handling.turn).toBe(1);
+  });
+
+  it('keeps the tetrahedron and the prism as they were', () => {
+    const tetra = start('tetra');
+    expect(faceOf(press(tetra, 'rotate', 'rotate'))).toBe('up:2');
+    expect(faceOf(press(tetra, 'rotate', 'rotate', 'flip'))).toBe('down:2');
+    expect(faceOf(press(tetra, 'flip', 'flip'))).toBe('up:0');
+    const prism = start('prism');
+    expect(flipBox(prism).message).toBe('This shape cannot be flipped.');
+    expect(faceOf(press(prism, 'rotate', 'rotate', 'rotate'))).toBe('up:0');
+  });
+
+  it('opens and uses the tools only upright on a side', () => {
+    const s0 = shiftWith([makePackage()], 3, tools('rotate', 'scale'));
+    const top = press(s0, 'flip');
+    expect(openBox(top).message).toBe('Turn the box upright first.');
+    expect(inspect(top, 'scale').message).toBe('Close the box and turn it face up first.');
+    expect(openBox(press(s0, 'flip', 'flip', 'flip', 'flip')).state.handling.opened).toBe(true);
+  });
+
+  it('reads a label whenever its side is showing, even upside-down', () => {
+    const p = makePackage({ kind: 'box', labelFace: 2 });
+    const s0 = shiftWith([p], 3, tools('rotate'));
+    expect(readLabel(s0, 'shipping').state.handling.addressRead).toBe(true);
+    expect(readLabel(press(s0, 'rotate'), 'shipping').message).toBe('That label is not on this side.');
+    const upside = press(s0, 'flip', 'flip'); // side 3 (index 2) upside-down
+    expect(readLabel(upside, 'contents').state.handling.contentsRead).toBe(true);
+    expect(readLabel(press(s0, 'flip'), 'shipping').message).toBe('That label is not on this side.');
   });
 });
 
@@ -486,13 +499,13 @@ describe('readLabel', () => {
   it('cannot read the shipping label from another side', () => {
     const turned = rotateBox(withRotate()).state;
     const r = readLabel(turned, 'shipping');
-    expect(r.message).toBe('The shipping label is on the first side.');
+    expect(r.message).toBe('That label is not on this side.');
     expect(r.state.handling.addressRead).toBe(false);
   });
 
   it('reads the contents label only on the face it sits on', () => {
     let s = withRotate();
-    expect(readLabel(s, 'contents').message).toBe('The contents label is on another side.');
+    expect(readLabel(s, 'contents').message).toBe('That label is not on this side.');
     s = rotateBox(rotateBox(s).state).state; // face 3 (index 2)
     const r = readLabel(s, 'contents');
     expect(r.state.handling.contentsRead).toBe(true);
@@ -507,10 +520,8 @@ describe('readLabel', () => {
     expect(readLabel(printed, 'contents').state.handling.contentsRead).toBe(true);
   });
 
-  it('needs the box closed and face up', () => {
+  it('needs the box closed', () => {
     const open = openBox(shiftWith([box, box], 3)).state;
     expect(readLabel(open, 'shipping').message).toBe('Close the box first.');
-    const flipped = flipBox(withRotate()).state;
-    expect(readLabel(flipped, 'shipping').message).toBe('Turn the box face up first.');
   });
 });

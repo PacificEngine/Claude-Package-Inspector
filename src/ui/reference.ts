@@ -31,12 +31,12 @@ const SHAPE_TEXT: Record<Shape, { name: string; kinds: string; description: stri
   cuboid: {
     name: 'Cuboid',
     kinds: 'Boxes and parcels',
-    description: 'Four sides to rotate; flip it for the underside.',
+    description: 'Four sides to rotate. Flip tumbles it: side, top, the opposite side upside-down, bottom. Rotating on the top or bottom changes which side comes next, and the bottom turns the other way.',
   },
   cylinder: {
     name: 'Cylinder',
     kinds: 'Cans, jars and tubes',
-    description: 'One round side; flip it for the base.',
+    description: 'One round side. Flip tumbles it: side, top, the side upside-down, bottom.',
   },
   prism: {
     name: 'Triangular prism',

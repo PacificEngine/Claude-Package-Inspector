@@ -45,17 +45,12 @@ import { money } from './money';
 import { addressGuide, restrictionGuide, shapeGuide, tabsFor, TAB_LABELS, type TabId } from './reference';
 import { drawPackage } from './packageArt';
 import { DEFECTS } from '../game/defects';
-import { faceCount } from '../game/shapes';
-import type { Handling, Package } from '../game/types';
-import { sideOf, viewOf } from '../game/handling';
+import { ringLength } from '../game/shapes';
+import type { DefectId, Handling, Package } from '../game/types';
+import { viewOf } from '../game/handling';
 import { itemsIn, legitItemIds } from '../game/contents';
 import { itemMarkersFor, labelMarkersFor, markerNoted, markersFor } from './markers';
 import type { Rect } from './geometry';
-
-const rotateLabel = (pkg: Package, h: Handling): string => {
-  const count = faceCount(pkg.kind, sideOf(h));
-  return count > 1 ? `Rotate (${h.face + 1}/${count})` : 'Rotate';
-};
 
 // What the contents label says is inside: nothing while it is missing, else what it was printed for.
 const labelText = (pkg: Package, h: Handling): string => {
@@ -141,7 +136,7 @@ export function mount(root: HTMLElement, seed: number): void {
   // Browsers only allow audio after a user gesture; capture so it is ready before the click's own sound.
   root.addEventListener('click', () => audio.resume(), true);
   // The most recent interaction, so the canvas can animate it (cleared when it finishes).
-  let lastAction: { action: PackageAction; startedAt: number } | null = null;
+  let lastAction: { action: PackageAction; startedAt: number; fresh: DefectId[] } | null = null;
 
   const soundControls = createSoundControls(audio, () => render());
 
@@ -158,8 +153,12 @@ export function mount(root: HTMLElement, seed: number): void {
     (): void => {
       const result = fn(campaign.shift!);
       // Only animate when the action did something; a refused action just shows its message.
+      // A repair only animates when it added a patch.
+      const fresh = result.state.handling.repaired.slice(campaign.shift!.handling.repaired.length);
       lastAction =
-        action && result.state !== campaign.shift ? { action, startedAt: performance.now() } : null;
+        action && result.state !== campaign.shift && (action !== 'repair' || fresh.length > 0)
+          ? { action, startedAt: performance.now(), fresh }
+          : null;
       update({ ...campaign, shift: result.state }, result.message);
     };
 
@@ -176,7 +175,7 @@ export function mount(root: HTMLElement, seed: number): void {
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const frame = (now: number): void => {
       const progress = animationProgress(current.action, now - current.startedAt, reduced);
-      drawPackage(ctx, pkg, s.handling, { action: current.action, progress });
+      drawPackage(ctx, pkg, s.handling, { action: current.action, progress, fresh: current.fresh });
       if (progress < 1 && canvas.isConnected) requestAnimationFrame(frame);
       else if (lastAction === current) lastAction = null;
     };
@@ -309,19 +308,11 @@ export function mount(root: HTMLElement, seed: number): void {
     const ownsFlip = s.inventory.tools.includes('rotate');
     const faceUp = view === 'front';
     const inspectRow = el('div', { cls: 'row' }, [
-      ...tools.map((t) => button(ITEM_NAMES[t], act((st) => inspect(st, t), t), !faceUp || s.handling.used.includes(t))),
+      ...tools.map((t) => button(ITEM_NAMES[t], act((st) => inspect(st, t), t), !faceUp || s.handling.flipPos !== 0 || s.handling.used.includes(t))),
       ...(ownsFlip
         ? [
-            button(
-              rotateLabel(pkg, s.handling),
-              act(rotateBox),
-              view === 'inside' || faceCount(pkg.kind, sideOf(s.handling)) <= 1,
-            ),
-            button(
-              view === 'back' ? 'Flip box back' : 'Flip box',
-              act(flipBox),
-              view === 'inside' || (view === 'front' && faceCount(pkg.kind, 'down') === 0),
-            ),
+            button('Rotate', act(rotateBox), view === 'inside'),
+            button('Flip box', act(flipBox), view === 'inside' || ringLength(pkg.kind) === 1),
           ]
         : []),
       ...(tools.length === 0 && !ownsFlip ? [el('span', { cls: 'muted', text: 'No inspection tools yet.' })] : []),
@@ -329,7 +320,7 @@ export function mount(root: HTMLElement, seed: number): void {
 
     const stocked = REPAIR_ITEMS.filter((t) => s.inventory.supplies[t] > 0);
     const repairRow = el('div', { cls: 'row' }, [
-      button(view === 'inside' ? 'Close box' : 'Open box', act(view === 'inside' ? closeBox : openBox), view === 'back'),
+      button(view === 'inside' ? 'Close box' : 'Open box', act(view === 'inside' ? closeBox : openBox), view === 'back' || (view !== 'inside' && s.handling.flipPos !== 0)),
       ...stocked.map((t) =>
         button(`${ITEM_NAMES[t]} (${s.inventory.supplies[t]})`, act((st) => repair(st, t), 'repair')),
       ),

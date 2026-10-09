@@ -1,23 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bodyRect, insideLayout, itemSlots, labelRect, patchRect, shippingLabelRect } from './geometry';
-
-describe('patchRect', () => {
-  it('keeps the usual patch near the top-left of a box', () => {
-    const b = bodyRect('box', 320, 260);
-    expect(patchRect('box', b)).toEqual({ x: b.x + b.w * 0.1, y: b.y + b.h * 0.1, w: b.w * 0.3, h: 14 });
-  });
-
-  it('puts a tetrahedron patch inside the triangle at both of its corners', () => {
-    const b = bodyRect('tetra', 320, 260);
-    const r = patchRect('tetra', b);
-    const halfWidthAt = (y: number): number => ((y - b.y) / b.h) * (b.w / 2);
-    for (const y of [r.y, r.y + r.h]) {
-      expect(r.x).toBeGreaterThanOrEqual(b.x + b.w / 2 - halfWidthAt(y));
-      expect(r.x + r.w).toBeLessThanOrEqual(b.x + b.w / 2 + halfWidthAt(y));
-    }
-    expect(r.y + r.h).toBeLessThanOrEqual(b.y + b.h);
-  });
-});
+import { bodyRect, clampInside, faceSquare, insideLayout, itemSlots, labelRect, rotateRect, shippingLabelRect } from './geometry';
 
 describe('itemSlots', () => {
   it('gives no slots for no items', () => {
@@ -91,5 +73,42 @@ describe('label rectangles', () => {
       expect(r.x).toBeGreaterThanOrEqual(b.x + b.w / 2 - half);
       expect(r.x + r.w).toBeLessThanOrEqual(b.x + b.w / 2 + half);
     }
+  });
+});
+
+describe('faceSquare and rotateRect', () => {
+  it('centres a square of the shorter side on the body', () => {
+    const b = bodyRect('box', 320, 260);
+    const sq = faceSquare('box', b);
+    expect(sq.w).toBe(Math.min(b.w, b.h));
+    expect(sq.h).toBe(sq.w);
+    expect(sq.x + sq.w / 2).toBeCloseTo(b.x + b.w / 2);
+    expect(sq.y + sq.h / 2).toBeCloseTo(b.y + b.h / 2);
+  });
+
+  it('rotates a rectangle clockwise about a point, in quarters', () => {
+    const r = { x: 10, y: 0, w: 4, h: 2 };
+    expect(rotateRect(r, 0, 0, 0)).toEqual(r);
+    expect(rotateRect(r, 0, 0, 1)).toEqual({ x: -2, y: 10, w: 2, h: 4 });
+    expect(rotateRect(r, 0, 0, 2)).toEqual({ x: -14, y: -2, w: 4, h: 2 });
+    expect(rotateRect(r, 0, 0, 4)).toEqual(r);
+    expect(rotateRect(r, 0, 0, -1)).toEqual(rotateRect(r, 0, 0, 3));
+  });
+});
+
+describe('clampInside', () => {
+  const bounds = { x: 10, y: 10, w: 100, h: 80 };
+
+  it('leaves a rectangle that already fits', () => {
+    const r = { x: 20, y: 20, w: 30, h: 10 };
+    expect(clampInside(r, bounds)).toEqual(r);
+  });
+
+  it('pulls a rectangle hanging below back inside', () => {
+    expect(clampInside({ x: 20, y: 95, w: 30, h: 10 }, bounds)).toEqual({ x: 20, y: 80, w: 30, h: 10 });
+  });
+
+  it('pulls a rectangle sticking out left and above back inside', () => {
+    expect(clampInside({ x: 0, y: 0, w: 30, h: 10 }, bounds)).toEqual({ x: 10, y: 10, w: 30, h: 10 });
   });
 });

@@ -23,10 +23,10 @@ describe('shapeGuide', () => {
     expect(shapeGuide(6).map((s) => s.name)).toEqual(['Cuboid', 'Cylinder', 'Triangular prism', 'Tetrahedron']);
     const cuboid = shapeGuide(1)[0];
     expect(cuboid.kinds).toBe('Boxes and parcels');
-    expect(cuboid.description).toBe('Four sides to rotate; flip it for the underside.');
+    expect(cuboid.description).toBe('Four sides to rotate. Flip tumbles it: side, top, the opposite side upside-down, bottom. Rotating on the top or bottom changes which side comes next, and the bottom turns the other way.');
     expect(shapeGuide(4)[2].description).toBe('Three sides to rotate; it cannot be flipped.');
     expect(shapeGuide(6)[3].description).toBe('Four faces to rotate; flip it for four more.');
-    expect(shapeGuide(1)[1].description).toBe('One round side; flip it for the base.');
+    expect(shapeGuide(1)[1].description).toBe('One round side. Flip tumbles it: side, top, the side upside-down, bottom.');
   });
 });
 

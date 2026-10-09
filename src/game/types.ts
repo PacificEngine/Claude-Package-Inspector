@@ -75,9 +75,13 @@ export interface Package {
 // What the player has done to the package currently on the desk.
 export interface Handling {
   opened: boolean; // the box is open: the inside view
-  flipped: boolean; // the other side is showing: the back view
+  flipped: boolean; // derived by orient(): the other side is showing: the back view
   fined: boolean; // the opening fine was already charged for this package
-  face: number; // index of the face showing on the current side
+  flipPos: number; // where the package is in its flip cycle (the source of truth)
+  turn: number; // running count of rotations (the source of truth)
+  upsideDown: boolean; // derived by orient(): the side on show is upside-down
+  spin: number; // derived by orient(): quarter turns the top or bottom picture is spun by
+  face: number; // derived by orient(): index of the face showing on the current side
   visited: string[]; // face keys the player has shown (e.g. 'up:0')
   used: InspectionTool[];
   repaired: DefectId[];

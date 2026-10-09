@@ -2,7 +2,7 @@ import { itemsIn } from '../game/contents';
 import { viewOf } from '../game/handling';
 import { markerClues, visibleDefects } from '../game/inspection';
 import type { DefectId, Handling, Package, PackageKind, View } from '../game/types';
-import { bodyRect, insideLayout, itemSlots, labelRect, voidRect, type InsideLayout, type Rect } from './geometry';
+import { bodyRect, insideLayout, itemSlots, labelRect, shippingLabelRect, voidRect, type InsideLayout, type Rect } from './geometry';
 
 export interface Marker {
   defect: DefectId;
@@ -78,4 +78,22 @@ export function itemMarkersFor(pkg: Package, handling: Handling, width: number, 
   return items.flatMap((item, i) =>
     item.leaking && !handling.sealed.includes(item.id) ? [{ itemId: item.id, rect: slots[i].rect }] : [],
   );
+}
+
+export interface LabelMarker {
+  label: 'shipping' | 'contents';
+  rect: Rect;
+}
+
+// The two labels on the outside, each clickable only on the face it sits on.
+export function labelMarkersFor(pkg: Package, handling: Handling, width: number, height: number): LabelMarker[] {
+  if (viewOf(handling) !== 'front') return [];
+  const body = bodyRect(pkg.kind, width, height);
+  const markers: LabelMarker[] = [];
+  if (handling.face === 0) markers.push({ label: 'shipping', rect: shippingLabelRect(pkg.kind, body) });
+  const lost = pkg.defects.includes('missing_label') && !handling.repaired.includes('missing_label');
+  if (handling.face === pkg.labelFace && !lost) {
+    markers.push({ label: 'contents', rect: labelRect(pkg.kind, body) });
+  }
+  return markers;
 }

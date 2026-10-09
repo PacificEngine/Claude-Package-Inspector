@@ -44,6 +44,10 @@ const CITY_ZIP: Record<string, string> = {
   'Moon Base': 'M0001',
 };
 const EVERYDAY_CITIES = ['Maplewood', 'Riverton', 'Port Calloway', 'Dunmere'];
+export const EVERYDAY_ZIPS: ReadonlyArray<{ city: string; zip: string }> = EVERYDAY_CITIES.map((city) => ({
+  city,
+  zip: CITY_ZIP[city],
+}));
 const RECIPIENTS = ['A. Pemberton', 'R. Okafor', 'M. Lindqvist', 'T. Navarro', 'J. Whitlock', 'S. Duarte'];
 const STREETS = ['Elm Street', 'Oak Road', 'Harbor Lane', 'Mill Court', 'Birch Avenue', 'Quarry Way'];
 

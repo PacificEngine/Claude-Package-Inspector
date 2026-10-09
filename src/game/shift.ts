@@ -102,6 +102,30 @@ const withVisited = (visited: string[], side: Side, face: number): string[] => {
   return visited.includes(key) ? visited : [...visited, key];
 };
 
+export function readLabel(s: ShiftState, which: 'shipping' | 'contents'): ActionResult {
+  const pkg = currentPackage(s);
+  if (!pkg) return idle(s);
+  if (s.handling.opened) return { state: s, message: 'Close the box first.' };
+  if (s.handling.flipped) return { state: s, message: 'Turn the box face up first.' };
+  if (which === 'shipping') {
+    if (s.handling.face !== 0) return { state: s, message: 'The shipping label is on the first side.' };
+    return {
+      state: { ...s, handling: { ...s.handling, addressRead: true } },
+      message: 'You read the shipping label.',
+    };
+  }
+  if (s.handling.face !== pkg.labelFace) {
+    return { state: s, message: 'The contents label is on another side.' };
+  }
+  if (pkg.defects.includes('missing_label') && !s.handling.repaired.includes('missing_label')) {
+    return { state: s, message: 'There is no contents label.' };
+  }
+  return {
+    state: { ...s, handling: { ...s.handling, contentsRead: true } },
+    message: 'You read the contents label.',
+  };
+}
+
 export function rotateBox(s: ShiftState): ActionResult {
   const pkg = currentPackage(s);
   if (!pkg) return idle(s);
@@ -275,11 +299,14 @@ export function stamp(s: ShiftState, verdict: Verdict): ActionResult {
     message = verdict === 'ship' ? `Shipped. +$${pkg.fee} at day's end.` : 'Rejected.';
   } else if (verdict === 'ship') {
     const why = unresolvedProblems(pkg, s.handling, s.card)
-      .map((p) =>
-        p.source === 'defect'
+      .map((p) => {
+        if (p.source === 'item') {
+          return `restricted ${pkg.contents.find((i) => i.id === p.itemId)?.name ?? 'item'}`;
+        }
+        return p.source === 'defect'
           ? DEFECTS[p.id as DefectId].label
-          : ADDRESS_ISSUE_LABELS[p.id as AddressIssue],
-      )
+          : ADDRESS_ISSUE_LABELS[p.id as AddressIssue];
+      })
       .join(', ');
     message = `Shipped a package that broke the rules (${why}). Strike!`;
   } else {

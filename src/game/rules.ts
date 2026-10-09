@@ -13,6 +13,7 @@ export interface RuleCard {
   allowedDefects: DefectId[];
   rejectAddress: AddressIssue[];
   allowedAddress: AddressIssue[];
+  restrictedItems: string[];
 }
 
 const DAY7_ALLOWED: DefectId[] = ['crushed_corner', 'rattling'];
@@ -30,6 +31,7 @@ const CARDS: RuleCard[] = [
     allowedDefects: ['crushed_corner', 'missing_label'],
     rejectAddress: ['missing_field'],
     allowedAddress: [],
+    restrictedItems: [],
   },
   {
     day: 2,
@@ -44,6 +46,7 @@ const CARDS: RuleCard[] = [
     allowedDefects: ['missing_label'],
     rejectAddress: ['missing_field', 'po_box', 'zip_mismatch'],
     allowedAddress: ['smudged'],
+    restrictedItems: [],
   },
   {
     day: 3,
@@ -66,6 +69,7 @@ const CARDS: RuleCard[] = [
     allowedDefects: ['crushed_corner', 'missing_label'],
     rejectAddress: ['missing_field', 'zip_mismatch', 'smudged', 'restricted_zone'],
     allowedAddress: ['po_box'],
+    restrictedItems: [],
   },
   {
     day: 4,
@@ -75,6 +79,7 @@ const CARDS: RuleCard[] = [
       'Reject leaks, torn tape, bottomless boxes and wrong weights.',
       'Reject any shipping label with a missing field, a ZIP that does not match the city, a restricted zone or "Nowhere Lane".',
       'Bulges, soggy cardboard and tiny weather are fine.',
+      'Candles may not ship: open the box and throw them away.',
     ],
     rejectDefects: [
       'leaking',
@@ -95,6 +100,7 @@ const CARDS: RuleCard[] = [
     ],
     rejectAddress: ['missing_field', 'zip_mismatch', 'restricted_zone', 'nowhere'],
     allowedAddress: ['po_box', 'smudged'],
+    restrictedItems: ['candles'],
   },
   {
     day: 5,
@@ -104,6 +110,7 @@ const CARDS: RuleCard[] = [
       'Reject leaks, bulges, bottomless boxes, weather, scorchers and futures.',
       'Reject any shipping label with a missing field, and any smudged label.',
       'Missing contents labels must be fixed. PO boxes and ZIP slips are fine.',
+      'Honey and cheese wedges may not ship: throw them away first.',
     ],
     rejectDefects: [
       'leaking',
@@ -117,6 +124,7 @@ const CARDS: RuleCard[] = [
     allowedDefects: ['crushed_corner', 'torn_tape', 'wet_cardboard', 'rattling', 'wrong_weight'],
     rejectAddress: ['missing_field', 'smudged', 'underwater', 'lunar'],
     allowedAddress: ['po_box', 'zip_mismatch'],
+    restrictedItems: ['honey', 'cheese wedges'],
   },
   {
     day: 6,
@@ -126,6 +134,7 @@ const CARDS: RuleCard[] = [
       'Reject leaks, bulges, soggy cardboard, bottomless boxes and futures.',
       'Reject any shipping label with a missing field.',
       'No PO boxes, no Moon, no sea floor, no "Nowhere Lane".',
+      'Peaches and dice may not ship: throw them away first.',
     ],
     rejectDefects: [
       'leaking',
@@ -140,6 +149,7 @@ const CARDS: RuleCard[] = [
     allowedDefects: ['torn_tape', 'crushed_corner', 'rattling', 'scorching', 'missing_label'],
     rejectAddress: ['missing_field', 'po_box', 'underwater', 'lunar', 'nowhere'],
     allowedAddress: ['zip_mismatch', 'smudged', 'restricted_zone'],
+    restrictedItems: ['peaches', 'dice'],
   },
   {
     day: 7,
@@ -148,6 +158,7 @@ const CARDS: RuleCard[] = [
       'Everything is rejectable except crushed corners and rattling.',
       'Every address problem is rejectable except a smudge.',
       'You earned this. Do not ship a thing that is not right.',
+      'Candles, rubber ducks and strawberry jam may not ship: throw them away first.',
     ],
     rejectDefects: ALL_DEFECT_IDS.filter((id) => !DAY7_ALLOWED.includes(id)),
     allowedDefects: DAY7_ALLOWED,
@@ -161,6 +172,7 @@ const CARDS: RuleCard[] = [
       'lunar',
     ],
     allowedAddress: ['smudged'],
+    restrictedItems: ['candles', 'rubber ducks', 'strawberry jam'],
   },
 ];
 
@@ -170,10 +182,11 @@ export function ruleCardForDay(day: number): RuleCard {
 }
 
 export interface Problem {
-  source: 'defect' | 'address';
-  id: DefectId | AddressIssue;
+  source: 'defect' | 'address' | 'item';
+  id: DefectId | AddressIssue | 'restricted_item';
   repairTool: RepairTool | 'discard' | null;
   requiresOpen: boolean;
+  itemId?: number; // for a restricted item: which one
 }
 
 export function rejectWorthyProblems(pkg: Package, card: RuleCard): Problem[] {
@@ -193,10 +206,20 @@ export function rejectWorthyProblems(pkg: Package, card: RuleCard): Problem[] {
       repairTool: isRepairableAddressIssue(issue) ? 'relabel' : null,
       requiresOpen: false,
     }));
-  return [...defects, ...addresses];
+  const items: Problem[] = pkg.contents
+    .filter((item) => card.restrictedItems.includes(item.name))
+    .map((item) => ({
+      source: 'item',
+      id: 'restricted_item',
+      repairTool: 'discard',
+      requiresOpen: true,
+      itemId: item.id,
+    }));
+  return [...defects, ...addresses, ...items];
 }
 
 function isResolved(problem: Problem, handling: Handling, pkg: Package): boolean {
+  if (problem.source === 'item') return handling.discarded.includes(problem.itemId as number);
   if (problem.source === 'address') return problem.repairTool === 'relabel' && handling.relabeled;
   const id = problem.id as DefectId;
   if (id === 'wrong_weight') return weightMatches(pkg, handling);

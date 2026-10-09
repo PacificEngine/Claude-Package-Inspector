@@ -76,7 +76,14 @@ export function generatePackage(rng: Rng, id: number, card: RuleCard): Package {
     }
   }
 
-  const placements = placeDefects(rng, kind, defects, card.day);
+  const placed = placeDefects(rng, kind, defects, card.day);
+  const upFaces = faceCount(kind, 'up');
+  const labelFace = card.day >= 2 && upFaces > 1 ? rng.int(upFaces) : 0;
+  // A missing contents label is missing from the face the label belongs on.
+  const placements =
+    defects.includes('missing_label') && card.day >= 2
+      ? { ...placed, missing_label: { side: 'up' as const, face: labelFace } }
+      : placed;
 
   const addressPool = [...card.rejectAddress, ...card.allowedAddress];
   const issue = addressPool.length > 0 && rng.chance(0.3) ? rng.pick(addressPool) : null;
@@ -110,6 +117,7 @@ export function generatePackage(rng: Rng, id: number, card: RuleCard): Package {
     actualWeightKg,
     contents,
     packagingKg,
+    labelFace,
     fee: 15 + card.day * 5 + rng.int(10),
     ...(placements ? { placements } : {}),
   };

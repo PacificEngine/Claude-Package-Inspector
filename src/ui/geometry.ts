@@ -34,6 +34,12 @@ export function labelRect(kind: PackageKind, b: Rect): Rect {
   return { x: b.x + b.w * 0.2, y: b.y + b.h * 0.4, w: b.w * 0.6, h: b.h * 0.3 };
 }
 
+// The shipping (address) label sits above the contents label. A tetrahedron's is higher and narrower.
+export function shippingLabelRect(kind: PackageKind, b: Rect): Rect {
+  if (kind === 'tetra') return { x: b.x + b.w * 0.36, y: b.y + b.h * 0.36, w: b.w * 0.28, h: b.h * 0.2 };
+  return { x: b.x + b.w * 0.2, y: b.y + b.h * 0.14, w: b.w * 0.6, h: b.h * 0.22 };
+}
+
 // The hole in a missing bottom. A tetrahedron's is smaller and lower so it fits the triangle.
 export function voidRect(kind: PackageKind, b: Rect): Rect {
   if (kind === 'tetra') return { x: b.x + b.w * 0.34, y: b.y + b.h * 0.5, w: b.w * 0.32, h: b.h * 0.34 };

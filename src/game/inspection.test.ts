@@ -244,7 +244,7 @@ describe('faces', () => {
         source: 'shape',
         defect: null,
         channel: 'reading',
-        text: 'Shape: triangular prism. Three sides to rotate; it cannot be flipped.',
+        text: 'Shape: triangular prism',
       },
     ]);
   });
@@ -286,6 +286,24 @@ describe('item clues', () => {
       { id: 2, name: 'b', art: 'dome', color: '#fff', weightKg: 1, extra: true },
     ] });
     expect(cluesFor(heavy, 'scale', [], [2])[0].text).toBe('Scale reads 1 kg (label says 1 kg).');
+  });
+
+  it('keeps the plain scale text when no legit item has been thrown away', () => {
+    const pkg = makePackage({ declaredWeightKg: 1, actualWeightKg: 2, contents: [
+      { id: 1, name: 'a', art: 'dome', color: '#fff', weightKg: 1 },
+      { id: 2, name: 'b', art: 'dome', color: '#fff', weightKg: 1, extra: true },
+    ] });
+    expect(cluesFor(pkg, 'scale', [], [])[0].text).toBe('Scale reads 2 kg (label says 1 kg).');
+  });
+
+  it('shows the adjusted label weight once a legit item has been thrown away', () => {
+    const pkg = makePackage({ declaredWeightKg: 3, actualWeightKg: 3, contents: [
+      { id: 1, name: 'a', art: 'dome', color: '#fff', weightKg: 1 },
+      { id: 2, name: 'b', art: 'dome', color: '#fff', weightKg: 2 },
+    ] });
+    expect(cluesFor(pkg, 'scale', [], [1])[0].text).toBe(
+      'Scale reads 2 kg (label says 3 kg, 2 kg without what you threw away).',
+    );
   });
 
   it('stops reporting the scale disagreement once the stowaway is thrown away', () => {

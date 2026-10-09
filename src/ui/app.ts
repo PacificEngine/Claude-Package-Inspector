@@ -21,6 +21,7 @@ import {
   noteDefect,
   noteLeak,
   openBox,
+  readLabel,
   repair,
   rotateBox,
   stamp,
@@ -41,13 +42,14 @@ import { animationProgress, type PackageAction } from './animation';
 import { button, el } from './dom';
 import { createSoundControls } from './soundControls';
 import { money } from './money';
+import { addressGuide, restrictionGuide, shapeGuide, tabsFor, TAB_LABELS, type TabId } from './reference';
 import { drawPackage } from './packageArt';
 import { DEFECTS } from '../game/defects';
 import { faceCount } from '../game/shapes';
 import type { Handling, Package } from '../game/types';
 import { sideOf, viewOf } from '../game/handling';
 import { itemsIn, legitItemIds } from '../game/contents';
-import { itemMarkersFor, markerNoted, markersFor } from './markers';
+import { itemMarkersFor, labelMarkersFor, markerNoted, markersFor } from './markers';
 import type { Rect } from './geometry';
 
 const rotateLabel = (pkg: Package, h: Handling): string => {
@@ -82,9 +84,59 @@ function labelled(b: HTMLButtonElement, label: string): HTMLButtonElement {
   return b;
 }
 
+const listOrNone = (items: string[]): HTMLElement =>
+  items.length > 0
+    ? el('ul', {}, items.map((text) => el('li', { text })))
+    : el('p', { cls: 'muted', text: 'None today.' });
+
+// The body of the active reference tab under the rule card.
+function referenceBody(tab: TabId, s: ShiftState): HTMLElement[] {
+  if (tab === 'shapes') {
+    return shapeGuide(s.day).flatMap((shape) => [
+      el('h4', { text: shape.name }),
+      el('div', { cls: 'muted', text: shape.kinds }),
+      el('p', { text: shape.description }),
+    ]);
+  }
+  if (tab === 'addresses') {
+    const guide = addressGuide(s.card);
+    const rules = el(
+      'ul',
+      {},
+      guide.rules.map((r) =>
+        el('li', { text: `${r.text} (${r.rejected ? 'rejected' : 'tolerated'} today)` }),
+      ),
+    );
+    if (guide.cityZips.length === 0) return [rules];
+    const table = el('table', { cls: 'zips' }, [
+      el('tr', {}, [el('th', { text: 'City' }), el('th', { text: 'ZIP' })]),
+      ...guide.cityZips.map((c) => el('tr', {}, [el('td', { text: c.city }), el('td', { text: c.zip })])),
+    ]);
+    return [rules, table];
+  }
+  if (tab === 'restrictions') {
+    const guide = restrictionGuide(s.card);
+    return [
+      el('h4', { text: 'Restricted destinations' }),
+      listOrNone(guide.destinations),
+      el('h4', { text: 'Restricted items' }),
+      listOrNone(guide.items),
+      ...(guide.items.length > 0
+        ? [el('p', { text: 'A restricted item can be thrown away: open the box, then use Throw away.' })]
+        : []),
+    ];
+  }
+  return [
+    el('h3', { text: s.card.title }),
+    el('ul', {}, s.card.lines.map((line) => el('li', { text: line }))),
+    el('p', { text: 'Opening a box that does not need opening costs 2x its shipping fee.' }),
+  ];
+}
+
 export function mount(root: HTMLElement, seed: number): void {
   let campaign = startCampaign(seed);
   let message = '';
+  let tab: TabId = 'rules';
   const audio = createAudioEngine(safeStorage());
   // Browsers only allow audio after a user gesture; capture so it is ready before the click's own sound.
   root.addEventListener('click', () => audio.resume(), true);
@@ -144,11 +196,28 @@ export function mount(root: HTMLElement, seed: number): void {
       el('span', { text: `Bank ${money(campaign.bank)}` }),
     ]);
 
-    const card = el('div', { cls: 'panel' }, [
-      el('h3', { text: s.card.title }),
-      el('ul', {}, s.card.lines.map((line) => el('li', { text: line }))),
-      el('p', { text: 'Opening a box that does not need opening costs 2x its shipping fee.' }),
-    ]);
+    const tabs = tabsFor(s.card);
+    if (!tabs.includes(tab)) tab = 'rules';
+    const tabButtons = el(
+      'div',
+      { cls: 'tabs' },
+      tabs.map((id) => {
+        const b = button(
+          TAB_LABELS[id],
+          () => {
+            tab = id;
+            render();
+          },
+          false,
+          id === tab ? 'tab active' : 'tab',
+        );
+        b.setAttribute('role', 'tab');
+        b.setAttribute('aria-selected', String(id === tab));
+        return b;
+      }),
+    );
+    tabButtons.setAttribute('role', 'tablist');
+    const card = el('div', { cls: 'panel' }, [tabButtons, ...referenceBody(tab, s)]);
 
     if (!pkg) {
       return el('div', {}, [
@@ -188,16 +257,28 @@ export function mount(root: HTMLElement, seed: number): void {
       b.setAttribute('aria-label', `${noted ? 'Noted' : 'Take a note'}: leaking ${name}`);
       return { rect: m.rect, button: placed(b, m.rect) };
     });
-    const markerButtons = [...defectMarkers, ...leakMarkers]
+    const labelMarkers = labelMarkersFor(pkg, s.handling, STAGE_W, STAGE_H).map((m) => {
+      const read = m.label === 'shipping' ? s.handling.addressRead : s.handling.contentsRead;
+      const b = button('', act((st) => readLabel(st, m.label)), false, read ? 'marker label read' : 'marker label');
+      b.setAttribute('aria-label', `Read the ${m.label} label`);
+      return { rect: m.rect, button: placed(b, m.rect) };
+    });
+    const markerButtons = [...defectMarkers, ...leakMarkers, ...labelMarkers]
       .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h)
       .map((m) => m.button);
     const stage = el('div', { cls: 'stage' }, [canvas, ...markerButtons]);
 
-    const label = el('div', { cls: 'label-card' }, [
-      ...addressLines(pkg.address).map((line) => el('div', { text: line })),
-      el('div', { text: `Declared weight: ${pkg.declaredWeightKg} kg` }),
-      el('div', { text: `Contents: ${labelText(pkg, s.handling)}` }),
-    ]);
+    const hint = (text: string) => el('div', { cls: 'muted', text });
+    const shippingPanel = s.handling.addressRead
+      ? el('div', { cls: 'label-card' }, [
+          ...addressLines(pkg.address).map((line) => el('div', { text: line })),
+          el('div', { text: `Declared weight: ${pkg.declaredWeightKg} kg` }),
+        ])
+      : hint('Shipping label: find it on the package and click it.');
+    const contentsPanel = s.handling.contentsRead
+      ? el('div', { cls: 'label-card' }, [el('div', { text: `Contents: ${labelText(pkg, s.handling)}` })])
+      : hint('Contents label: find it on the package and click it.');
+    const label = el('div', { cls: 'labels' }, [shippingPanel, contentsPanel]);
     const ownsScale = s.inventory.tools.includes('scale');
     const inside =
       view === 'inside'

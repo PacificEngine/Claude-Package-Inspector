@@ -61,6 +61,7 @@ export interface Placement {
 export interface Package {
   contents: Item[];
   packagingKg: number;
+  labelFace: number; // index of the up face carrying the contents label
   id: number;
   kind: PackageKind;
   placements?: Partial<Record<DefectId, Placement>>;
@@ -80,6 +81,8 @@ export interface Handling {
   visited: string[]; // face keys the player has shown (e.g. 'up:0')
   used: InspectionTool[];
   repaired: DefectId[];
+  addressRead: boolean; // the shipping label has been read
+  contentsRead: boolean; // the contents label has been read
   relabeled: boolean;
   notes: string[]; // keys of the clues the player has recorded, in order
   discarded: number[]; // ids of items the player has thrown away

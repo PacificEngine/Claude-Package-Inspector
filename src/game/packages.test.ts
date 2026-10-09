@@ -4,6 +4,7 @@ import { generatePackage, kindsForDay } from './packages';
 import { createRng } from './rng';
 import { ruleCardForDay } from './rules';
 import { faceCount, sideCount } from './shapes';
+import type { DefectId, PackageKind, Placement } from './types';
 
 const sample = (day: number, n = 400) => {
   const rng = createRng(day * 101);
@@ -67,14 +68,64 @@ describe('generatePackage', () => {
   });
 });
 
+describe('type names', () => {
+  const all = () => [1, 3, 4, 6, 7].flatMap((day) => sample(day, 400));
+
+  it('names boxes, parcels, cans, jars and tubes after their kind', () => {
+    for (const p of all()) {
+      if (p.kind !== 'prism' && p.kind !== 'tetra' && p.kind !== 'octa') expect(p.typeName).toBe(p.kind);
+    }
+  });
+
+  it('calls a prism a tent or a wedge, a tetrahedron a pyraminx or caltrops, and an octahedron a diamond or a pyrite', () => {
+    const names = { prism: new Set<string>(), tetra: new Set<string>(), octa: new Set<string>() };
+    for (const p of all()) {
+      if (p.kind === 'prism' || p.kind === 'tetra' || p.kind === 'octa') names[p.kind].add(p.typeName);
+    }
+    expect([...names.prism].sort()).toEqual(['tent', 'wedge']);
+    expect([...names.tetra].sort()).toEqual(['caltrops', 'pyraminx']);
+    expect([...names.octa].sort()).toEqual(['diamond', 'pyrite']);
+  });
+});
+
+describe('cylinders have a front and a back', () => {
+  const cylinders = (day: number) =>
+    sample(day, 600).filter((p) => p.kind === 'can' || p.kind === 'jar' || p.kind === 'tube');
+
+  it('puts surface defects and the contents label on one of the two sides, never the top', () => {
+    const surface = ['leaking', 'crushed_corner', 'torn_tape', 'bulging', 'missing_label'];
+    const labelFaces = new Set<number>();
+    const defectFaces = new Set<number>();
+    for (const day of [2, 4, 7]) {
+      for (const p of cylinders(day)) {
+        expect(p.labelFace).toBeLessThan(2);
+        labelFaces.add(p.labelFace);
+        for (const id of p.defects.filter((d) => surface.includes(d))) {
+          expect(p.placements?.[id]?.side).toBe('up');
+          expect(p.placements![id]!.face).toBeLessThan(2);
+          defectFaces.add(p.placements![id]!.face);
+        }
+      }
+    }
+    expect([...labelFaces].sort()).toEqual([0, 1]);
+    expect([...defectFaces].sort()).toEqual([0, 1]);
+  });
+
+  it('keeps the contents label on the front on day 1', () => {
+    for (const p of cylinders(1)) expect(p.labelFace).toBe(0);
+  });
+});
+
 describe('shapes by day', () => {
-  it('uses the five original kinds on days 1 to 3, adds prisms on day 4 and tetrahedrons on day 6', () => {
+  it('uses the five original kinds on days 1 to 3, adds prisms on day 4, tetrahedrons on day 6 and octahedrons on day 7', () => {
     for (const day of [1, 2, 3]) expect(kindsForDay(day)).toEqual(['box', 'can', 'parcel', 'jar', 'tube']);
     expect(kindsForDay(4)).toEqual(['box', 'can', 'parcel', 'jar', 'tube', 'prism']);
     expect(kindsForDay(5)).toContain('prism');
     expect(kindsForDay(5)).not.toContain('tetra');
     expect(kindsForDay(6)).toContain('tetra');
+    expect(kindsForDay(6)).not.toContain('octa');
     expect(kindsForDay(7)).toContain('tetra');
+    expect(kindsForDay(7)).toContain('octa');
   });
 
   it('only generates a shape once it is unlocked, and does generate it afterwards', () => {
@@ -83,6 +134,8 @@ describe('shapes by day', () => {
     expect(kinds(5).has('tetra')).toBe(false);
     expect(kinds(4).has('prism')).toBe(true);
     expect(kinds(6).has('tetra')).toBe(true);
+    expect(kinds(6).has('octa')).toBe(false);
+    expect(kinds(7).has('octa')).toBe(true);
   });
 });
 
@@ -115,6 +168,47 @@ describe('defect placements', () => {
       }
     }
     expect(sawFaceBeyondFirst).toBe(true);
+  });
+
+  const placedOn = (kind: PackageKind, id: DefectId): Placement[] =>
+    [4, 5, 6, 7]
+      .flatMap((day) => sample(day, 800))
+      .filter((p) => p.kind === kind && p.defects.includes(id))
+      .map((p) => p.placements![id]!);
+
+  it('puts prism surface defects on one of its three sides and its underside defects on its bottom', () => {
+    const torn = new Set(placedOn('prism', 'torn_tape').map((pl) => pl.face));
+    for (const pl of placedOn('prism', 'torn_tape')) expect(pl.side).toBe('up');
+    expect([...torn].sort()).toEqual([0, 1, 2]);
+    for (const id of ['crushed_corner', 'missing_label'] as const) {
+      for (const pl of placedOn('prism', id)) {
+        expect(pl.side).toBe('up');
+        expect(pl.face).toBeLessThan(3);
+      }
+    }
+    const under = [...placedOn('prism', 'bottomless'), ...placedOn('prism', 'wet_cardboard')];
+    expect(under.length).toBeGreaterThan(0);
+    for (const pl of under) expect(pl).toEqual({ side: 'down', face: 0 });
+  });
+
+  it('puts tetrahedron underside defects on its one bottom', () => {
+    const under = [...placedOn('tetra', 'bottomless'), ...placedOn('tetra', 'wet_cardboard')];
+    expect(under.length).toBeGreaterThan(0);
+    for (const pl of under) expect(pl).toEqual({ side: 'down', face: 0 });
+  });
+
+  it('spreads octahedron underside defects over its four lower faces and gives it no surface-only defects', () => {
+    const under = [...placedOn('octa', 'bottomless'), ...placedOn('octa', 'wet_cardboard')];
+    expect(under.length).toBeGreaterThan(0);
+    for (const pl of under) {
+      expect(pl.side).toBe('down');
+      expect(pl.face).toBeLessThan(4);
+    }
+    const octas = sample(7, 1200).filter((p) => p.kind === 'octa');
+    expect(octas.length).toBeGreaterThan(0);
+    for (const p of octas) {
+      for (const d of ['leaking', 'crushed_corner', 'torn_tape', 'bulging'] as const) expect(p.defects).not.toContain(d);
+    }
   });
 });
 
@@ -184,13 +278,12 @@ describe('package contents', () => {
 });
 
 describe('the contents label face', () => {
-  it('is face 1 on day 1 and on shapes with one up face', () => {
+  it('is face 1 on day 1 and one of the sides afterwards', () => {
     for (const p of sample(1, 300)) expect(p.labelFace).toBe(0);
     for (const day of [2, 5, 7]) {
       for (const p of sample(day, 300)) {
         expect(p.labelFace).toBeGreaterThanOrEqual(0);
         expect(p.labelFace).toBeLessThan(sideCount(p.kind));
-        if (sideCount(p.kind) === 1) expect(p.labelFace).toBe(0);
       }
     }
   });

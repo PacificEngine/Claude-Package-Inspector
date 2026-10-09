@@ -49,12 +49,17 @@ export const CATALOG: Record<PackageKind, CatalogItem[]> = {
   prism: [
     { name: 'candles', art: 'sticks', color: '#f2e2b0', baseKg: 0.3 },
     { name: 'toy tent', art: 'tower', color: '#d95d5d', baseKg: 0.4 },
-    { name: 'cheese wedges', art: 'dome', color: '#f2c94c', baseKg: 0.5 },
+    { name: 'cheddar', art: 'dome', color: '#f2c94c', baseKg: 0.5 },
   ],
   tetra: [
-    { name: 'crystals', art: 'tower', color: '#8fd3f4', baseKg: 0.4 },
     { name: 'party hats', art: 'tower', color: '#ff7eb6', baseKg: 0.2 },
     { name: 'dice', art: 'book', color: '#e8e8e8', baseKg: 0.1 },
+    { name: 'jingle bells', art: 'dome', color: '#e8c860', baseKg: 0.1 },
+  ],
+  octa: [
+    { name: 'crystals', art: 'tower', color: '#8fd3f4', baseKg: 0.4 },
+    { name: 'gold nuggets', art: 'dome', color: '#d4a017', baseKg: 0.5 },
+    { name: 'pearls', art: 'dome', color: '#f0e6d8', baseKg: 0.1 },
   ],
 };
 
@@ -79,6 +84,7 @@ export const PACKAGING_KG: Record<PackageKind, number> = {
   tube: 0.1,
   prism: 0.4,
   tetra: 0.3,
+  octa: 0.3,
 };
 
 export const itemsIn = (pkg: Package, handling: Handling): Item[] =>

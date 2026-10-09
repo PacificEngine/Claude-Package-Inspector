@@ -3,7 +3,7 @@ import { buy, endDay, nextDay, startCampaign, toShop, type Campaign } from './ca
 import { itemsIn, labelMatches } from './contents';
 import { DEFECTS } from './defects';
 import { revealedDefects } from './inspection';
-import { LAST_DAY, needsOpening, rejectWorthyProblems, isShippable } from './rules';
+import { LAST_DAY, needsOpening, rejectWorthyProblems, isShippable, ruleCardForDay } from './rules';
 import {
   closeBox,
   currentPackage,
@@ -14,11 +14,13 @@ import {
   repair,
   rotateBox,
   stamp,
+  startShift,
   type ShiftState,
 } from './shift';
 import type { RepairTarget } from './repair';
-import type { RepairTool } from './types';
-import { ringLength, sideCount } from './shapes';
+import type { PackageKind, RepairTool } from './types';
+import { faceCount, ringLength, sideCount } from './shapes';
+import { inventoryWith, makePackage } from './testing';
 import { unlockedItems } from './shop';
 
 interface ShiftMetrics {
@@ -34,6 +36,17 @@ interface ShiftMetrics {
 }
 
 const isRepairTool = (t: RepairTool | 'discard' | null): t is RepairTool => t !== null && t !== 'discard';
+
+// Show every face, then finish a full circuit so the box is upright and closed.
+function sweepFaces(initial: ShiftState, kind: PackageKind): ShiftState {
+  let s = initial;
+  const turns = sideCount(kind);
+  for (let pos = 0; pos < ringLength(kind); pos++) {
+    for (let i = 0; i < turns; i++) s = rotateBox(s).state; // each side, or a harmless spin on the top and bottom
+    s = flipBox(s).state;
+  }
+  return s;
+}
 
 function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftState {
   let s = initial;
@@ -57,12 +70,7 @@ function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftSt
         }
         // Show every face, then finish a full circuit so the box is upright and closed.
         if (s.inventory.tools.includes('rotate')) {
-          const ring = ringLength(pkg.kind);
-          const turns = sideCount(pkg.kind);
-          for (let pos = 0; pos < ring; pos++) {
-            for (let i = 0; i < turns; i++) s = rotateBox(s).state; // each side, or a harmless spin on the top and bottom
-            if (ring > 1) s = flipBox(s).state;
-          }
+          s = sweepFaces(s, pkg.kind);
         }
         // Exterior-only repairs (tape on tape or a dent) are done with the box closed.
         if (needsOpening(pkg, s.card)) {
@@ -129,7 +137,8 @@ function stockUp(c: Campaign): Campaign {
   return c;
 }
 
-const SEEDS = [1, 2, 3];
+// Enough campaigns that the rarer fixes (sealing a leaking item inside) turn up.
+const SEEDS = [1, 2, 3, 4, 5, 6];
 
 const freshMetrics = (): ShiftMetrics => ({
   opened: 0,
@@ -175,7 +184,28 @@ describe('a perfect inspector playing all seven days', () => {
     const total = (key: keyof ShiftMetrics): number => metrics.reduce((sum, m) => sum + m[key], 0);
     expect(total('discarded')).toBeGreaterThan(0);
     expect(total('discardedRestricted')).toBeGreaterThan(0);
-    expect(total('sealed')).toBeGreaterThan(0);
     expect(total('labelsPrinted')).toBeGreaterThan(0);
+  });
+
+  it('seals a leaking item in some campaign', () => {
+    const CAP = 200;
+    let sealed = 0;
+    for (let seed = 1; seed <= CAP && sealed === 0; seed++) sealed = playCampaign(seed).sealed;
+    expect(sealed).toBeGreaterThan(0);
+  });
+});
+
+describe('the face-sweep circuit', () => {
+  it.each(['prism', 'tetra', 'octa'] as const)('reaches every face of a %s and ends where it began', (kind) => {
+    const inventory = inventoryWith({}, ['look', 'rotate']);
+    const start = { ...startShift(3, inventory, 1), card: ruleCardForDay(3), queue: [makePackage({ kind })], index: 0 };
+    const done = sweepFaces(start, kind);
+    const expected = [
+      ...Array.from({ length: faceCount(kind, 'up') }, (_, i) => `up:${i}`),
+      ...Array.from({ length: faceCount(kind, 'down') }, (_, i) => `down:${i}`),
+    ];
+    expect([...done.handling.visited].sort()).toEqual(expected.sort());
+    expect(done.handling.flipped).toBe(false);
+    expect(done.handling.upsideDown).toBe(false);
   });
 });

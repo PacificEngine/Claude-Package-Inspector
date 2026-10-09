@@ -166,7 +166,30 @@ const ADDRESS_WORDS: Record<AddressIssue, RegExp> = {
   nowhere: /nowhere/,
   underwater: /sea|water/,
   lunar: /moon/,
+  restricted_person: /blackwood|mortimer/,
 };
+
+describe('restricted people on the cards', () => {
+  it('rejects them on days 3, 4 and 7, naming both, and leaves them off the other days', () => {
+    for (const d of [3, 4, 7]) {
+      const card = ruleCardForDay(d);
+      expect(card.rejectAddress, `day ${d}`).toContain('restricted_person');
+      expect(card.lines, `day ${d}`).toContain('Do not ship to Z. Blackwood or K. Mortimer.');
+    }
+    for (const d of [1, 2, 5, 6]) {
+      const card = ruleCardForDay(d);
+      expect([...card.rejectAddress, ...card.allowedAddress], `day ${d}`).not.toContain('restricted_person');
+      expect(card.lines.join(' '), `day ${d}`).not.toMatch(/Blackwood|Mortimer/);
+    }
+  });
+
+  it('cannot be fixed with a relabel', () => {
+    const pkg = makePackage({ address: { ...goodAddress, recipient: 'K. Mortimer' } });
+    expect(rejectWorthyProblems(pkg, ruleCardForDay(3))).toEqual([
+      { source: 'address', id: 'restricted_person', repairTool: null, requiresOpen: false },
+    ]);
+  });
+});
 
 describe('rule card text', () => {
   it('names every rejectable thing, so a card lists exactly what is checked', () => {
@@ -249,7 +272,7 @@ describe('restricted items', () => {
   it('lists restricted items by day', () => {
     expect([1, 2, 3].map((d) => ruleCardForDay(d).restrictedItems)).toEqual([[], [], []]);
     expect(ruleCardForDay(4).restrictedItems).toEqual(['candles']);
-    expect(ruleCardForDay(5).restrictedItems).toEqual(['honey', 'cheese wedges']);
+    expect(ruleCardForDay(5).restrictedItems).toEqual(['honey', 'cheddar']);
     expect(ruleCardForDay(6).restrictedItems).toEqual(['peaches', 'dice']);
     expect(ruleCardForDay(7).restrictedItems).toEqual(['candles', 'rubber ducks', 'strawberry jam']);
   });

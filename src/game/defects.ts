@@ -16,9 +16,9 @@ export interface DefectDef {
   insideClue?: string;
 }
 
-const ANY: readonly PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra'];
+const ANY: readonly PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra', 'octa'];
 const SURFACE_SHAPES: readonly PackageKind[] = ['box', 'parcel', 'prism'];
-const UNDERSIDE_SHAPES: readonly PackageKind[] = ['box', 'parcel', 'tetra'];
+const UNDERSIDE_SHAPES: readonly PackageKind[] = ['box', 'parcel', 'prism', 'tetra', 'octa'];
 
 export const DEFECTS: Record<DefectId, DefectDef> = {
   leaking: {

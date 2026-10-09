@@ -1,6 +1,6 @@
 import { declaredAfter, itemsIn, weightIsDeclared, weightLeft } from './contents';
 import { DEFECTS } from './defects';
-import { faceKey, isFaceless, placementOf, shapeNote } from './shapes';
+import { faceKey, isFaceless, placementOf, typeNote } from './shapes';
 import type { DefectId, Handling, InspectionTool, Package, Side, View } from './types';
 
 export type ClueChannel = 'visual' | 'sound' | 'reading';
@@ -51,7 +51,7 @@ const shapeClue = (pkg: Package): Clue => ({
   source: 'shape',
   defect: null,
   channel: 'reading',
-  text: shapeNote(pkg.kind),
+  text: typeNote(pkg),
 });
 
 const clueKey = (source: ClueSource, defect: DefectId | null): string =>

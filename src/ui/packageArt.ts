@@ -15,6 +15,7 @@ const BODY_COLOR: Record<PackageKind, string> = {
   tube: '#d99aa0',
   prism: '#b9a0d8',
   tetra: '#9cc7a3',
+  octa: '#8fb8e0',
 };
 
 const MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Rect) => void>> = {
@@ -124,14 +125,28 @@ function drawBelt(ctx: CanvasRenderingContext2D, width: number, height: number):
   for (let x = 0; x < width; x += 24) ctx.fillRect(x, height - 40, 12, 6);
 }
 
+// A triangle standing in a rectangle: its apex at the top centre, its base along the bottom.
+function trianglePath(ctx: CanvasRenderingContext2D, r: Rect): void {
+  ctx.moveTo(r.x + r.w / 2, r.y);
+  ctx.lineTo(r.x + r.w, r.y + r.h);
+  ctx.lineTo(r.x, r.y + r.h);
+  ctx.closePath();
+}
+
+// A diamond through the midpoints of a rectangle's edges.
+function diamondPath(ctx: CanvasRenderingContext2D, r: Rect): void {
+  ctx.moveTo(r.x + r.w / 2, r.y);
+  ctx.lineTo(r.x + r.w, r.y + r.h / 2);
+  ctx.lineTo(r.x + r.w / 2, r.y + r.h);
+  ctx.lineTo(r.x, r.y + r.h / 2);
+  ctx.closePath();
+}
+
 function bodyPath(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect): void {
   ctx.beginPath();
-  if (pkg.kind === 'tetra') {
-    ctx.moveTo(b.x + b.w / 2, b.y);
-    ctx.lineTo(b.x + b.w, b.y + b.h);
-    ctx.lineTo(b.x, b.y + b.h);
-    ctx.closePath();
-  } else if (flat(pkg.kind)) ctx.rect(b.x, b.y, b.w, b.h);
+  if (pkg.kind === 'tetra') trianglePath(ctx, b);
+  else if (pkg.kind === 'octa') diamondPath(ctx, b);
+  else if (flat(pkg.kind)) ctx.rect(b.x, b.y, b.w, b.h);
   else ctx.roundRect(b.x, b.y, b.w, b.h, 18);
 }
 
@@ -334,6 +349,18 @@ function drawLabelCard(ctx: CanvasRenderingContext2D, r: Rect, mark: string): vo
   ctx.restore();
 }
 
+// The back of a cylinder: a muted vertical seam, so it reads differently from the front.
+function drawCylinderBack(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect): void {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(b.x + b.w * 0.12, b.y + 6);
+  ctx.lineTo(b.x + b.w * 0.12, b.y + b.h - 6);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // A side, turned upside-down with the package; its marks turn with it (see markerRectFor).
 function drawSide(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling: Handling, shown: Shown): void {
   const visible = visibleDefects(pkg, handling, 'front');
@@ -351,6 +378,7 @@ function drawSide(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling
 
     if (pkg.kind === 'prism') drawPrismLook(ctx, b);
 
+    if (round(pkg.kind) && side === 'up' && face === 1) drawCylinderBack(ctx, pkg, b);
     if (side === 'up' && face === 0) drawLabelCard(ctx, shippingLabelRect(pkg.kind, b), 'TO');
     if (side === 'up' && face === pkg.labelFace) {
       const label = labelRect(pkg.kind, b);
@@ -371,7 +399,8 @@ function drawSide(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling
   });
 }
 
-// The top of a box or parcel (a tape seam across the middle) or the lid of a cylinder, spun with the package.
+// The top of a box or parcel (a tape seam across the middle), the lid of a cylinder
+// or the triangular end of a prism, spun with the package.
 function drawTop(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling: Handling, shown: Shown): void {
   const visible = visibleDefects(pkg, handling, 'front');
   const sq = faceSquare(pkg.kind, b);
@@ -386,6 +415,23 @@ function drawTop(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling:
       ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.arc(sq.x + r, sq.y + r, r - 8, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    if (pkg.kind === 'prism') {
+      // The triangular end of the prism, with its ridge running down from the apex.
+      ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 1.12);
+      ctx.beginPath();
+      trianglePath(ctx, sq);
+      ctx.fill();
+      ctx.strokeStyle = darken(BODY_COLOR[pkg.kind], 0.7);
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sq.x + sq.w / 2, sq.y + 6);
+      ctx.lineTo(sq.x + sq.w / 2, sq.y + sq.h - 4);
       ctx.stroke();
       return;
     }
@@ -406,7 +452,7 @@ const BACK_MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Re
   bottomless: (ctx, b, kind) => {
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    const r = voidRect(kind, b); // a tetrahedron's void stays inside its triangle
+    const r = voidRect(kind, b); // a tetrahedron's or octahedron's void stays inside its triangle or diamond
     ctx.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2, r.h / 2, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#1a1a2e';
@@ -422,20 +468,32 @@ const BACK_MARKS: Partial<Record<DefectId, (ctx: CanvasRenderingContext2D, b: Re
 };
 
 // The bottom: darker, an inner frame and a tape cross (a void instead when it is missing).
-// A cuboid's or cylinder's is drawn in the face square and spun; a tetrahedron's down faces are its triangle.
+// A cuboid's or cylinder's is drawn in the face square and spun; a prism's is drawn there
+// unspun; a tetrahedron's bottom and an octahedron's lower faces fill the body's own outline.
 function drawBottom(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handling: Handling, shown: Shown): void {
   const visible = visibleDefects(pkg, handling, 'back');
-  const tetra = SHAPE_OF_KIND[pkg.kind] === 'tetra';
-  const area = tetra ? b : faceSquare(pkg.kind, b);
+  const shape = SHAPE_OF_KIND[pkg.kind];
+  const onBody = shape === 'tetra' || shape === 'octa';
+  const area = onBody ? b : faceSquare(pkg.kind, b);
   const outline = (): void => {
-    if (tetra) bodyPath(ctx, pkg, b);
-    else {
-      ctx.beginPath();
-      if (round(pkg.kind)) ctx.arc(area.x + area.w / 2, area.y + area.h / 2, area.w / 2, 0, Math.PI * 2);
-      else ctx.rect(area.x, area.y, area.w, area.h);
-    }
+    ctx.beginPath();
+    if (shape === 'tetra' || shape === 'prism') trianglePath(ctx, area);
+    else if (shape === 'octa') diamondPath(ctx, area);
+    else if (shape === 'cylinder') ctx.arc(area.x + area.w / 2, area.y + area.h / 2, area.w / 2, 0, Math.PI * 2);
+    else ctx.rect(area.x, area.y, area.w, area.h);
   };
-  turned(ctx, area, tetra ? 0 : shown.spin, () => {
+  const innerFrame = (): void => {
+    ctx.beginPath();
+    if (shape === 'tetra' || shape === 'prism') {
+      ctx.moveTo(area.x + area.w / 2, area.y + area.h * 0.17);
+      ctx.lineTo(area.x + area.w * 0.88, area.y + area.h * 0.94);
+      ctx.lineTo(area.x + area.w * 0.12, area.y + area.h * 0.94);
+      ctx.closePath();
+    } else if (shape === 'octa') diamondPath(ctx, { x: area.x + 14, y: area.y + 14, w: area.w - 28, h: area.h - 28 });
+    else if (shape === 'cylinder') ctx.arc(area.x + area.w / 2, area.y + area.h / 2, area.w / 2 - 8, 0, Math.PI * 2);
+    else ctx.rect(area.x + 8, area.y + 8, area.w - 16, area.h - 16);
+  };
+  turned(ctx, area, onBody ? 0 : shown.spin, () => {
     ctx.fillStyle = darken(BODY_COLOR[pkg.kind], 0.72);
     outline();
     ctx.fill();
@@ -444,14 +502,7 @@ function drawBottom(ctx: CanvasRenderingContext2D, pkg: Package, b: Rect, handli
     ctx.clip();
     ctx.strokeStyle = 'rgba(0,0,0,0.25)';
     ctx.lineWidth = 3;
-    ctx.beginPath();
-    if (tetra) {
-      ctx.moveTo(b.x + b.w / 2, b.y + 22);
-      ctx.lineTo(b.x + b.w - 18, b.y + b.h - 8);
-      ctx.lineTo(b.x + 18, b.y + b.h - 8);
-      ctx.closePath();
-    } else if (round(pkg.kind)) ctx.arc(area.x + area.w / 2, area.y + area.h / 2, area.w / 2 - 8, 0, Math.PI * 2);
-    else ctx.rect(area.x + 8, area.y + 8, area.w - 16, area.h - 16);
+    innerFrame();
     ctx.stroke();
 
     if (!visible.includes('bottomless')) {

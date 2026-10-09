@@ -13,10 +13,13 @@ import {
   type Item,
 } from './contents';
 import { newHandling } from './handling';
+import { kindsForDay } from './packages';
+import { LAST_DAY, ruleCardForDay } from './rules';
+import { typeNamesFor } from './shapes';
 import { makePackage } from './testing';
 import type { PackageKind } from './types';
 
-const KINDS: PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra'];
+const KINDS: PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra', 'octa'];
 
 describe('catalogs', () => {
   it('has three plain-noun items with positive weights for every kind', () => {
@@ -27,6 +30,25 @@ describe('catalogs', () => {
         expect(item.baseKg).toBeGreaterThan(0);
       }
       expect(PACKAGING_KG[kind]).toBeGreaterThan(0);
+    }
+  });
+
+  it('gives the octahedron its own items and keeps the crystals there', () => {
+    expect(CATALOG.octa.map((i) => i.name)).toEqual(['crystals', 'gold nuggets', 'pearls']);
+    expect(CATALOG.tetra.map((i) => i.name)).not.toContain('crystals');
+    expect(CATALOG.tetra.map((i) => i.name)).toEqual(expect.arrayContaining(['party hats', 'dice']));
+    expect(PACKAGING_KG.octa).toBe(0.3);
+  });
+
+  it('never names an item after a package type', () => {
+    const types = KINDS.flatMap((k) => typeNamesFor(k));
+    for (const kind of KINDS) for (const item of CATALOG[kind]) expect(types).not.toContain(item.name);
+  });
+
+  it('only restricts items that can turn up by that day', () => {
+    for (let day = 1; day <= LAST_DAY; day++) {
+      const available = kindsForDay(day).flatMap((k) => CATALOG[k].map((i) => i.name));
+      for (const name of ruleCardForDay(day).restrictedItems) expect(available, `${day} ${name}`).toContain(name);
     }
   });
 

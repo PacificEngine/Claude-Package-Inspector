@@ -25,24 +25,30 @@ export function bodyRect(kind: PackageKind, w: number, h: number): Rect {
       return { x: w / 2 - 90, y: floor - 95, w: 180, h: 95 };
     case 'tetra':
       return { x: w / 2 - 75, y: floor - 130, w: 150, h: 130 };
+    case 'octa':
+      return { x: w / 2 - 70, y: floor - 140, w: 140, h: 140 };
   }
 }
 
-// Where the contents label goes (or is missing). A tetrahedron's is lower, where the triangle is wide.
+// Where the contents label goes (or is missing). A tetrahedron's is lower, where the triangle is wide; an octahedron's sits in the middle of its diamond.
 export function labelRect(kind: PackageKind, b: Rect): Rect {
+  if (kind === 'octa') return { x: b.x + b.w * 0.3, y: b.y + b.h * 0.5, w: b.w * 0.4, h: b.h * 0.2 };
   if (kind === 'tetra') return { x: b.x + b.w * 0.3, y: b.y + b.h * 0.62, w: b.w * 0.4, h: b.h * 0.26 };
   return { x: b.x + b.w * 0.2, y: b.y + b.h * 0.4, w: b.w * 0.6, h: b.h * 0.3 };
 }
 
-// The shipping (address) label sits above the contents label. A tetrahedron's is higher and narrower.
+// The shipping (address) label sits above the contents label. A tetrahedron's is higher and narrower; an octahedron's is narrower to fit its diamond.
 export function shippingLabelRect(kind: PackageKind, b: Rect): Rect {
+  if (kind === 'octa') return { x: b.x + b.w * 0.32, y: b.y + b.h * 0.28, w: b.w * 0.36, h: b.h * 0.18 };
   if (kind === 'tetra') return { x: b.x + b.w * 0.36, y: b.y + b.h * 0.36, w: b.w * 0.28, h: b.h * 0.2 };
   return { x: b.x + b.w * 0.2, y: b.y + b.h * 0.14, w: b.w * 0.6, h: b.h * 0.22 };
 }
 
-// The hole in a missing bottom. A tetrahedron's is smaller and lower so it fits the triangle.
+// The hole in a missing bottom. A tetrahedron's (and a prism's, whose bottom is a triangle too)
+// is smaller and lower so it fits the triangle; an octahedron's is smaller so it fits the diamond.
 export function voidRect(kind: PackageKind, b: Rect): Rect {
-  if (kind === 'tetra') return { x: b.x + b.w * 0.34, y: b.y + b.h * 0.5, w: b.w * 0.32, h: b.h * 0.34 };
+  if (kind === 'octa') return { x: b.x + b.w * 0.34, y: b.y + b.h * 0.36, w: b.w * 0.32, h: b.h * 0.3 };
+  if (kind === 'tetra' || kind === 'prism') return { x: b.x + b.w * 0.34, y: b.y + b.h * 0.5, w: b.w * 0.32, h: b.h * 0.34 };
   return { x: b.x + b.w * 0.14, y: b.y + b.h * 0.16, w: b.w * 0.72, h: b.h * 0.68 };
 }
 

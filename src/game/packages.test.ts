@@ -3,7 +3,7 @@ import { DEFECTS } from './defects';
 import { generatePackage, kindsForDay } from './packages';
 import { createRng } from './rng';
 import { ruleCardForDay } from './rules';
-import { faceCount } from './shapes';
+import { faceCount, sideCount } from './shapes';
 
 const sample = (day: number, n = 400) => {
   const rng = createRng(day * 101);
@@ -99,9 +99,11 @@ describe('defect placements', () => {
       for (const p of sample(day, 400)) {
         for (const id of p.defects) {
           const placed = p.placements?.[id];
-          if (surface.includes(id)) {
+          if (id === 'torn_tape' && (p.kind === 'box' || p.kind === 'parcel')) {
+            expect(placed).toEqual({ side: 'up', face: sideCount(p.kind) });
+          } else if (surface.includes(id)) {
             expect(placed?.side).toBe('up');
-            expect(placed!.face).toBeLessThan(faceCount(p.kind, 'up'));
+            expect(placed!.face).toBeLessThan(sideCount(p.kind));
             if (placed!.face > 0) sawFaceBeyondFirst = true;
           } else if (under.includes(id)) {
             expect(placed?.side).toBe('down');
@@ -187,8 +189,8 @@ describe('the contents label face', () => {
     for (const day of [2, 5, 7]) {
       for (const p of sample(day, 300)) {
         expect(p.labelFace).toBeGreaterThanOrEqual(0);
-        expect(p.labelFace).toBeLessThan(faceCount(p.kind, 'up'));
-        if (faceCount(p.kind, 'up') === 1) expect(p.labelFace).toBe(0);
+        expect(p.labelFace).toBeLessThan(sideCount(p.kind));
+        if (sideCount(p.kind) === 1) expect(p.labelFace).toBe(0);
       }
     }
   });
@@ -205,6 +207,22 @@ describe('the contents label face', () => {
         if (!p.defects.includes('missing_label')) continue;
         seen++;
         expect(p.placements?.missing_label).toEqual({ side: 'up', face: p.labelFace });
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+});
+
+describe('the torn tape', () => {
+  it('sits on the top of boxes and parcels from day 2', () => {
+    let seen = 0;
+    for (const day of [2, 4, 7]) {
+      for (const p of sample(day, 600)) {
+        if (!p.defects.includes('torn_tape')) continue;
+        seen++;
+        const placed = p.placements?.torn_tape;
+        if (p.kind === 'box' || p.kind === 'parcel') expect(placed).toEqual({ side: 'up', face: 4 });
+        else expect(placed!.face).toBeLessThan(sideCount(p.kind));
       }
     }
     expect(seen).toBeGreaterThan(0);

@@ -1,8 +1,20 @@
 import { itemsIn } from '../game/contents';
 import { viewOf } from '../game/handling';
 import { markerClues, visibleDefects } from '../game/inspection';
+import { SHAPE_OF_KIND, shownFace } from '../game/shapes';
 import type { DefectId, Handling, Package, PackageKind, View } from '../game/types';
-import { bodyRect, insideLayout, itemSlots, labelRect, shippingLabelRect, voidRect, type InsideLayout, type Rect } from './geometry';
+import {
+  bodyRect,
+  faceSquare,
+  insideLayout,
+  itemSlots,
+  labelRect,
+  rotateRect,
+  shippingLabelRect,
+  voidRect,
+  type InsideLayout,
+  type Rect,
+} from './geometry';
 
 export interface Marker {
   defect: DefectId;
@@ -23,12 +35,44 @@ const FRONT: Partial<Record<DefectId, OnBody>> = {
   tiny_weather: (b) => ({ x: b.x + b.w / 2 - 30, y: b.y - 40, w: 60, h: 46 }),
 };
 
+// On the top, relative to the face square (the torn tape is the seam across the middle).
+const TOP: Partial<Record<DefectId, OnBody>> = {
+  torn_tape: (s) => ({ x: s.x, y: s.y + s.h * 0.43, w: s.w, h: 14 }),
+};
+
+// Underside defects, relative to the face square (or the body for a tetrahedron).
 const BACK: Partial<Record<DefectId, OnBody>> = {
   bottomless: (b, kind) => voidRect(kind, b),
   wet_cardboard: (b) => ({ x: b.x + b.w * 0.08, y: b.y + b.h * 0.4, w: b.w * 0.44, h: b.h * 0.4 }),
-  crushed_corner: (b) => ({ x: b.x + b.w - 44, y: b.y, w: 44, h: 44 }),
-  bulging: (b) => ({ x: b.x + 8, y: b.y + 8, w: b.w - 16, h: b.h - 16 }),
 };
+
+const turnAbout = (r: Rect, about: Rect, quarters: number): Rect =>
+  rotateRect(r, about.x + about.w / 2, about.y + about.h / 2, quarters);
+
+// Where a defect is on the face now showing, in canvas coordinates.
+export function markerRectFor(
+  pkg: Package,
+  handling: Handling,
+  defect: DefectId,
+  width: number,
+  height: number,
+): Rect | undefined {
+  const body = bodyRect(pkg.kind, width, height);
+  const shown = shownFace(pkg.kind, handling.flipPos, handling.turn);
+  if (shown.part === 'top') {
+    const sq = faceSquare(pkg.kind, body);
+    const r = TOP[defect]?.(sq, pkg.kind);
+    return r && turnAbout(r, sq, shown.spin);
+  }
+  if (shown.part === 'bottom') {
+    const tetra = SHAPE_OF_KIND[pkg.kind] === 'tetra';
+    const area = tetra ? body : faceSquare(pkg.kind, body);
+    const r = BACK[defect]?.(area, pkg.kind);
+    return r && (tetra ? r : turnAbout(r, area, shown.spin));
+  }
+  const r = FRONT[defect]?.(body, pkg.kind);
+  return r && (shown.upsideDown ? turnAbout(r, body, 2) : r);
+}
 
 type InLayout = (l: InsideLayout) => Rect;
 
@@ -46,14 +90,10 @@ const INSIDE: Partial<Record<DefectId, InLayout>> = {
 
 export function markersFor(pkg: Package, handling: Handling, width: number, height: number): Marker[] {
   const view = viewOf(handling);
-  const body = bodyRect(pkg.kind, width, height);
   const layout = insideLayout(width, height);
   const markers: Marker[] = [];
   for (const defect of visibleDefects(pkg, handling, view)) {
-    const rect =
-      view === 'inside'
-        ? INSIDE[defect]?.(layout)
-        : (view === 'front' ? FRONT : BACK)[defect]?.(body, pkg.kind);
+    const rect = view === 'inside' ? INSIDE[defect]?.(layout) : markerRectFor(pkg, handling, defect, width, height);
     if (rect) markers.push({ defect, view, rect });
   }
   return markers;
@@ -85,15 +125,18 @@ export interface LabelMarker {
   rect: Rect;
 }
 
-// The two labels on the outside, each clickable only on the face it sits on.
+// The two labels on the outside, each clickable only on the side it sits on (turned with it).
 export function labelMarkersFor(pkg: Package, handling: Handling, width: number, height: number): LabelMarker[] {
-  if (viewOf(handling) !== 'front') return [];
+  const shown = shownFace(pkg.kind, handling.flipPos, handling.turn);
+  if (viewOf(handling) !== 'front' || shown.part !== 'side') return [];
   const body = bodyRect(pkg.kind, width, height);
+  const turned = (r: Rect): Rect => (shown.upsideDown ? turnAbout(r, body, 2) : r);
+  const { side, face } = shown.placement;
   const markers: LabelMarker[] = [];
-  if (handling.face === 0) markers.push({ label: 'shipping', rect: shippingLabelRect(pkg.kind, body) });
+  if (side === 'up' && face === 0) markers.push({ label: 'shipping', rect: turned(shippingLabelRect(pkg.kind, body)) });
   const lost = pkg.defects.includes('missing_label') && !handling.repaired.includes('missing_label');
-  if (handling.face === pkg.labelFace && !lost) {
-    markers.push({ label: 'contents', rect: labelRect(pkg.kind, body) });
+  if (side === 'up' && face === pkg.labelFace && !lost) {
+    markers.push({ label: 'contents', rect: turned(labelRect(pkg.kind, body)) });
   }
   return markers;
 }

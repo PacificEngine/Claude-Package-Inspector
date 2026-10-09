@@ -16,28 +16,15 @@ import {
   currentNotes,
   currentPackage,
   discardItem,
-  flipBox,
-  inspect,
   noteDefect,
   noteLeak,
   openBox,
   readLabel,
-  repair,
-  rotateBox,
   stamp,
-  weighItem,
   type ActionResult,
   type ShiftState,
 } from '../game/shift';
-import {
-  INSPECTION_ITEMS,
-  ITEM_NAMES,
-  PRICES,
-  REPAIR_ITEMS,
-  isInspectionItem,
-  unlockedItems,
-  type PurchasableTool,
-} from '../game/shop';
+import { ITEM_NAMES, PRICES, isInspectionItem, unlockedItems } from '../game/shop';
 import { animationProgress, type PackageAction } from './animation';
 import { button, el } from './dom';
 import { createSoundControls } from './soundControls';
@@ -45,12 +32,26 @@ import { money } from './money';
 import { addressGuide, restrictionGuide, shapeGuide, tabsFor, TAB_LABELS, type TabId } from './reference';
 import { drawPackage } from './packageArt';
 import { DEFECTS } from '../game/defects';
-import { ringLength } from '../game/shapes';
 import type { DefectId, Handling, Package } from '../game/types';
 import { viewOf } from '../game/handling';
 import { itemsIn, legitItemIds } from '../game/contents';
 import { itemMarkersFor, labelMarkersFor, markerNoted, markersFor } from './markers';
 import type { Rect } from './geometry';
+import {
+  animationFor,
+  canTarget,
+  isSupply,
+  leakTarget,
+  ownedTools,
+  putDownAfter,
+  toggleTool,
+  toolLabel,
+  toolName,
+  useTool,
+  type ToolId,
+  type UseTarget,
+} from './toolActions';
+import { drawTool } from './toolArt';
 
 // What the contents label says is inside: nothing while it is missing, else what it was printed for.
 const labelText = (pkg: Package, h: Handling): string => {
@@ -62,6 +63,11 @@ const labelText = (pkg: Package, h: Handling): string => {
 
 const STAGE_W = 320;
 const STAGE_H = 260;
+
+const TOOL_PX = 48;
+
+// The one Esc handler, so mounting again does not stack listeners.
+let escHandler: ((e: KeyboardEvent) => void) | null = null;
 
 const fineText = (fines: number): string => money(fines > 0 ? -fines : 0);
 
@@ -137,6 +143,18 @@ export function mount(root: HTMLElement, seed: number): void {
   root.addEventListener('click', () => audio.resume(), true);
   // The most recent interaction, so the canvas can animate it (cleared when it finishes).
   let lastAction: { action: PackageAction; startedAt: number; fresh: DefectId[] } | null = null;
+  // The tool in the player's hand; the next click on the package, a marker or an item uses it.
+  let selectedTool: ToolId | null = null;
+  // Where the last shift render was, so moving to a new package or opening/closing puts the tool down.
+  let lastSeen: { index: number; opened: boolean } | null = null;
+
+  if (escHandler) document.removeEventListener('keydown', escHandler);
+  escHandler = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape' || !selectedTool || campaign.phase !== 'shift') return;
+    selectedTool = null;
+    render();
+  };
+  document.addEventListener('keydown', escHandler);
 
   const soundControls = createSoundControls(audio, () => render());
 
@@ -160,6 +178,19 @@ export function mount(root: HTMLElement, seed: number): void {
           ? { action, startedAt: performance.now(), fresh }
           : null;
       update({ ...campaign, shift: result.state }, result.message);
+    };
+
+  // A click on something on the package: uses the tool in hand there, else does the plain click.
+  const use =
+    (target: UseTarget, plain: () => void = () => undefined) =>
+    (): void => {
+      const tool = selectedTool;
+      if (!tool) return plain();
+      act((st) => {
+        const result = useTool(st, tool, target);
+        if (putDownAfter(tool, target, result.state !== st)) selectedTool = null;
+        return result;
+      }, animationFor(tool, target))();
     };
 
   function animate(canvas: HTMLCanvasElement, s: ShiftState): void {
@@ -231,8 +262,20 @@ export function mount(root: HTMLElement, seed: number): void {
     }
 
     const view = viewOf(s.handling);
+    const owned = ownedTools(s.inventory);
+    const moved = lastSeen !== null && (lastSeen.index !== s.index || lastSeen.opened !== s.handling.opened);
+    // A supply that ran out is no longer owned, so it drops out of the hand too.
+    if (moved || (selectedTool && !owned.includes(selectedTool))) selectedTool = null;
+    lastSeen = { index: s.index, opened: s.handling.opened };
+    const tool = selectedTool;
+    const aimed = (target: UseTarget): boolean => tool !== null && canTarget(tool, target, s.handling.opened);
+    // While a tool is in hand a marker says what it will be used on, else what a plain click does.
+    const markerLabel = (what: string, plain: string): string => (tool ? `Use the ${toolName(tool)} on ${what}` : plain);
+    const markerCls = (base: string, target: UseTarget): string => (aimed(target) ? `${base} target` : base);
+
     const canvas = el('canvas', { attrs: { width: String(STAGE_W), height: String(STAGE_H) } });
     animate(canvas, s);
+    canvas.addEventListener('click', use({ kind: 'package' }));
 
     // Each marker is a real button over the drawing: click to take a note, Tab to reach it.
     // Largest first, so smaller, more specific markers come later in the DOM and sit on top, still clickable.
@@ -245,27 +288,32 @@ export function mount(root: HTMLElement, seed: number): void {
     };
     const defectMarkers = markersFor(pkg, s.handling, STAGE_W, STAGE_H).map((m) => {
       const noted = markerNoted(pkg, s.handling, m);
-      const b = button('', act((st) => noteDefect(st, m.defect, m.view)), false, noted ? 'marker noted' : 'marker');
-      b.setAttribute('aria-label', `${noted ? 'Noted' : 'Take a note'}: ${DEFECTS[m.defect].label}`);
+      const target: UseTarget = { kind: 'defect', id: m.defect };
+      const b = button('', use(target, act((st) => noteDefect(st, m.defect, m.view))), false, markerCls(noted ? 'marker noted' : 'marker', target));
+      b.setAttribute('aria-label', markerLabel(`the ${DEFECTS[m.defect].label.toLowerCase()}`, `${noted ? 'Noted' : 'Take a note'}: ${DEFECTS[m.defect].label}`));
       return { rect: m.rect, button: placed(b, m.rect) };
     });
     const leakMarkers = itemMarkersFor(pkg, s.handling, STAGE_W, STAGE_H).map((m) => {
       const noted = s.handling.notes.includes(`leak:${m.itemId}`);
       const name = pkg.contents.find((i) => i.id === m.itemId)?.name ?? 'item';
-      const b = button('', act((st) => noteLeak(st, m.itemId)), false, noted ? 'marker noted' : 'marker');
-      b.setAttribute('aria-label', `${noted ? 'Noted' : 'Take a note'}: leaking ${name}`);
+      // Tools that do nothing to an item act on the package the leak is in.
+      const target = tool ? leakTarget(tool, m.itemId) : { kind: 'item' as const, itemId: m.itemId };
+      const b = button('', use(target, act((st) => noteLeak(st, m.itemId))), false, markerCls(noted ? 'marker noted' : 'marker', target));
+      b.setAttribute('aria-label', markerLabel(`the leaking ${name}`, `${noted ? 'Noted' : 'Take a note'}: leaking ${name}`));
       return { rect: m.rect, button: placed(b, m.rect) };
     });
     const labelMarkers = labelMarkersFor(pkg, s.handling, STAGE_W, STAGE_H).map((m) => {
       const read = m.label === 'shipping' ? s.handling.addressRead : s.handling.contentsRead;
-      const b = button('', act((st) => readLabel(st, m.label)), false, read ? 'marker label read' : 'marker label');
-      b.setAttribute('aria-label', `Read the ${m.label} label`);
+      const target: UseTarget = { kind: m.label === 'shipping' ? 'shippingLabel' : 'contentsLabel' };
+      const b = button('', use(target, act((st) => readLabel(st, m.label))), false, markerCls(read ? 'marker label read' : 'marker label', target));
+      b.setAttribute('aria-label', markerLabel(`the ${m.label} label`, `Read the ${m.label} label`));
       return { rect: m.rect, button: placed(b, m.rect) };
     });
     const markerButtons = [...defectMarkers, ...leakMarkers, ...labelMarkers]
       .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h)
       .map((m) => m.button);
-    const stage = el('div', { cls: 'stage' }, [canvas, ...markerButtons]);
+    const stage = el('div', { cls: aimed({ kind: 'package' }) ? 'stage aim' : 'stage' }, [canvas, ...markerButtons]);
+    if (tool) stage.setAttribute('data-tool', '1');
 
     const hint = (text: string) => el('div', { cls: 'muted', text });
     const shippingPanel = s.handling.addressRead
@@ -278,15 +326,19 @@ export function mount(root: HTMLElement, seed: number): void {
       ? el('div', { cls: 'label-card' }, [el('div', { text: `Contents: ${labelText(pkg, s.handling)}` })])
       : hint('Contents label: find it on the package and click it.');
     const label = el('div', { cls: 'labels' }, [shippingPanel, contentsPanel]);
-    const ownsScale = s.inventory.tools.includes('scale');
     const inside =
       view === 'inside'
         ? [
             el('ul', { cls: 'contents' }, itemsIn(pkg, s.handling).map((item) => {
               const weighed = s.handling.notes.includes(`item:${item.id}`);
+              const text = `${item.name}: ${weighed ? `${item.weightKg} kg` : '?'}`;
+              const target: UseTarget = { kind: 'item', itemId: item.id };
+              // The name is only clickable while a tool is in hand: that is what it is clicked with.
+              const name = tool
+                ? labelled(button(text, use(target), false, markerCls('item', target)), `Use the ${toolName(tool)} on the ${item.name}`)
+                : el('span', { text });
               return el('li', {}, [
-                el('span', { text: `${item.name}: ${weighed ? `${item.weightKg} kg` : '?'}` }),
-                ...(ownsScale ? [labelled(button('Weigh', act((st) => weighItem(st, item.id))), `Weigh the ${item.name}`)] : []),
+                name,
                 labelled(button('Throw away', act((st) => discardItem(st, item.id))), `Throw away the ${item.name}`),
               ]);
             })),
@@ -302,28 +354,31 @@ export function mount(root: HTMLElement, seed: number): void {
         : []),
     ]);
 
-    const tools = INSPECTION_ITEMS.filter(
-      (t): t is Exclude<PurchasableTool, 'rotate'> => t !== 'rotate' && s.inventory.tools.includes(t),
+    // Each tool is drawn as itself; click to pick it up (gold border), click again or press Esc to put it down.
+    const toolButton = (t: ToolId): HTMLButtonElement => {
+      const picked = t === tool;
+      const b = button('', () => {
+        selectedTool = toggleTool(selectedTool, t);
+        render();
+      }, false, picked ? 'tool selected' : 'tool');
+      b.title = toolName(t);
+      b.setAttribute('aria-label', toolLabel(t, s.inventory));
+      b.setAttribute('aria-pressed', String(picked));
+      const art = el('canvas', { attrs: { width: String(TOOL_PX), height: String(TOOL_PX) } });
+      const ctx = art.getContext('2d');
+      if (ctx) drawTool(ctx, t, TOOL_PX);
+      b.append(art);
+      if (isSupply(t)) b.append(el('span', { cls: 'count', text: String(s.inventory.supplies[t]) }));
+      return b;
+    };
+    const tray = el(
+      'div',
+      { cls: 'tray' },
+      owned.length > 0 ? owned.map(toolButton) : [el('span', { cls: 'muted', text: 'No tools yet.' })],
     );
-    const ownsFlip = s.inventory.tools.includes('rotate');
-    const faceUp = view === 'front';
-    const inspectRow = el('div', { cls: 'row' }, [
-      ...tools.map((t) => button(ITEM_NAMES[t], act((st) => inspect(st, t), t), !faceUp || s.handling.flipPos !== 0 || s.handling.used.includes(t))),
-      ...(ownsFlip
-        ? [
-            button('Rotate', act(rotateBox), view === 'inside'),
-            button('Flip box', act(flipBox), view === 'inside' || ringLength(pkg.kind) === 1),
-          ]
-        : []),
-      ...(tools.length === 0 && !ownsFlip ? [el('span', { cls: 'muted', text: 'No inspection tools yet.' })] : []),
-    ]);
 
-    const stocked = REPAIR_ITEMS.filter((t) => s.inventory.supplies[t] > 0);
-    const repairRow = el('div', { cls: 'row' }, [
+    const boxRow = el('div', { cls: 'row' }, [
       button(view === 'inside' ? 'Close box' : 'Open box', act(view === 'inside' ? closeBox : openBox), view === 'back' || (view !== 'inside' && s.handling.flipPos !== 0)),
-      ...stocked.map((t) =>
-        button(`${ITEM_NAMES[t]} (${s.inventory.supplies[t]})`, act((st) => repair(st, t), 'repair')),
-      ),
     ]);
 
     const stampRow = el('div', { cls: 'row' }, [
@@ -340,10 +395,10 @@ export function mount(root: HTMLElement, seed: number): void {
           card,
           notes,
           el('div', { cls: 'panel actions' }, [
-            el('h3', { text: 'Inspect' }),
-            inspectRow,
-            el('h3', { text: 'Repair' }),
-            repairRow,
+            el('h3', { text: 'Tools' }),
+            tray,
+            el('h3', { text: 'Box' }),
+            boxRow,
             el('h3', { text: 'Decide' }),
             stampRow,
             el('p', { cls: 'message', text: message }),
@@ -419,6 +474,11 @@ export function mount(root: HTMLElement, seed: number): void {
   }
 
   function render(): void {
+    // Leaving the shift (settling up, the shop) puts the tool down.
+    if (campaign.phase !== 'shift') {
+      selectedTool = null;
+      lastSeen = null;
+    }
     const screens = {
       shift: shiftScreen,
       dayEnd: dayEndScreen,

@@ -57,7 +57,7 @@ describe('soundsFor', () => {
   it('plays repair when a supply is used', () => {
     const c = campaignWith([torn], 2, inventoryWith({ tape: 2 }));
     const opened = withShift(c, openBox(c.shift!).state);
-    expect(soundsFor(opened, withShift(opened, repair(opened.shift!, 'tape').state))).toEqual([
+    expect(soundsFor(opened, withShift(opened, repair(opened.shift!, 'tape', { kind: 'defect', id: 'torn_tape' }).state))).toEqual([
       'repair',
     ]);
   });

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { buy, endDay, nextDay, startCampaign, toShop, type Campaign } from './campaign';
-import { itemsIn } from './contents';
-import { LAST_DAY, needsOpening, rejectWorthyProblems, isShippable, unresolvedProblems } from './rules';
+import { itemsIn, labelMatches } from './contents';
+import { DEFECTS } from './defects';
+import { revealedDefects } from './inspection';
+import { LAST_DAY, needsOpening, rejectWorthyProblems, isShippable } from './rules';
 import {
   closeBox,
   currentPackage,
@@ -14,6 +16,7 @@ import {
   stamp,
   type ShiftState,
 } from './shift';
+import type { RepairTarget } from './repair';
 import type { RepairTool } from './types';
 import { ringLength, sideCount } from './shapes';
 import { unlockedItems } from './shop';
@@ -29,6 +32,8 @@ interface ShiftMetrics {
   sealed: number;
   labelsPrinted: number;
 }
+
+const isRepairTool = (t: RepairTool | 'discard' | null): t is RepairTool => t !== null && t !== 'discard';
 
 function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftState {
   let s = initial;
@@ -76,25 +81,36 @@ function playShiftPerfectly(initial: ShiftState, metrics: ShiftMetrics): ShiftSt
             else metrics.discarded++;
           }
         }
-        const ordered = [...tools].sort((a, b) => Number(a === 'relabel') - Number(b === 'relabel'));
-        for (const t of ordered) {
-          // Sealant may need several uses: one per leaking item, then the cardboard.
-          const stillNeeded = (): boolean =>
-            t === 'sealant' &&
-            unresolvedProblems(pkg, s.handling, s.card).some((p) => p.repairTool === 'sealant');
-          let again = true;
-          while (again) {
-            const result = repair(s, t);
-            s = result.state;
-            if (result.message.startsWith('Fixed:')) metrics.repaired++;
-            if (result.message.startsWith('Fixed: the leaking')) metrics.sealed++;
-            if (result.message.includes('contents label') || result.message.includes('Missing contents label')) {
-              metrics.labelsPrinted++;
-            }
-            if (result.message === 'Open the box first.') metrics.refused++;
-            if (result.message.includes('Supply wasted')) metrics.wasted++;
-            again = result.message.startsWith('Fixed:') && stillNeeded();
+        const tally = (result: { message: string }): void => {
+          if (result.message.startsWith('Fixed:')) metrics.repaired++;
+          if (result.message.startsWith('Fixed: the leaking')) metrics.sealed++;
+          if (result.message.includes('contents label') || result.message.includes('Missing contents label')) {
+            metrics.labelsPrinted++;
           }
+          if (result.message === 'Open the box first.') metrics.refused++;
+          if (result.message.includes('Supply wasted')) metrics.wasted++;
+        };
+        const fix = (tool: RepairTool, target: RepairTarget): void => {
+          const result = repair(s, tool, target);
+          s = result.state;
+          tally(result);
+        };
+        // Defects first (the missing label prints last, once the contents are settled), then the leaking items.
+        const toFix = revealedDefects(pkg, s.handling)
+          .filter((id) => problems.some((p) => p.source === 'defect' && p.id === id))
+          .filter((id) => isRepairTool(DEFECTS[id].repairedBy))
+          .sort((a, b) => Number(a === 'missing_label') - Number(b === 'missing_label'));
+        for (const id of toFix) fix(DEFECTS[id].repairedBy as RepairTool, { kind: 'defect', id });
+        if (s.handling.opened) {
+          for (const leaking of itemsIn(pkg, s.handling).filter((i) => i.leaking)) {
+            if (!s.handling.sealed.includes(leaking.id)) fix('sealant', { kind: 'item', itemId: leaking.id });
+          }
+        }
+        if (problems.some((p) => p.source === 'address' && p.repairTool === 'relabel')) {
+          fix('relabel', { kind: 'shippingLabel' });
+        }
+        if (s.handling.opened && s.handling.repaired.includes('missing_label') && !labelMatches(pkg, s.handling)) {
+          fix('relabel', { kind: 'contentsLabel' });
         }
       } else {
         metrics.skippedForStock++;

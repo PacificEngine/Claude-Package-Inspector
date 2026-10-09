@@ -42,6 +42,18 @@ h4 { margin: 8px 0 4px; }
 .labels { display: grid; gap: 8px; margin: 8px 0 12px; }
 .labels .muted { font-size: 14px; }
 
+/* Tools are objects in a tray: pick one up (gold border), then click what to use it on. */
+.tray { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tool { position: relative; padding: 4px; border: 3px solid transparent; border-radius: 10px; background: #3a4150; }
+.tool canvas { display: block; width: 48px; height: 48px; background: transparent; border-radius: 0; }
+.tool.selected { border-color: #f6e05e; box-shadow: 0 0 0 2px rgba(246, 224, 94, 0.35), 0 0 12px rgba(246, 224, 94, 0.6); background: #4a5368; }
+.tool .count { position: absolute; right: -4px; bottom: -4px; background: #1a1d23; border-radius: 10px; padding: 0 6px; font-size: 12px; }
+.stage[data-tool] canvas, .stage[data-tool] .marker { cursor: crosshair; }
+.stage.aim canvas { box-shadow: 0 0 0 2px rgba(246, 224, 94, 0.4); }
+.marker.target { border-color: #68d391; border-style: solid; background: rgba(104, 211, 145, 0.14); }
+.contents button.item { flex: 1; text-align: left; color: inherit; font-size: 14px; border: 2px solid transparent; }
+.contents button.item.target { border-color: #68d391; background: rgba(104, 211, 145, 0.14); }
+
 /* Narrow screens: one column, the box on top, then the label panels, then the rule tabs, notes and actions. */
 @media (max-width: 760px) {
   #app { padding: 8px; }

@@ -21,6 +21,7 @@ import {
   startShift,
   type ShiftState,
 } from './shift';
+import { revealedDefects, visibleDefects } from './inspection';
 import { goodAddress, inventoryWith, makePackage } from './testing';
 import type { InspectionTool, Package, PackageKind } from './types';
 
@@ -267,6 +268,28 @@ describe('inspect with views and notes', () => {
   });
 });
 
+describe('a surface defect on the can back', () => {
+  const dented = makePackage({
+    kind: 'can',
+    defects: ['torn_tape'],
+    placements: { torn_tape: { side: 'up', face: 1 } },
+  });
+  const start = () => shiftWith([dented], 2, inventoryWith({ tape: 1 }, ['look', 'rotate']));
+
+  it('is hidden on the front, shown and revealed after a rotate and a look, and repairable', () => {
+    let s = inspect(start(), 'look').state;
+    expect(visibleDefects(dented, s.handling, 'front')).toEqual([]);
+    expect(revealedDefects(dented, s.handling)).toEqual([]);
+
+    s = inspect(rotateBox(s).state, 'look').state;
+    expect(visibleDefects(dented, s.handling, 'front')).toEqual(['torn_tape']);
+    expect(revealedDefects(dented, s.handling)).toEqual(['torn_tape']);
+
+    const r = repair(openBox(s).state, 'tape', { kind: 'defect', id: 'torn_tape' });
+    expect(r.state.handling.repaired).toEqual(['torn_tape']);
+  });
+});
+
 describe('noteDefect', () => {
   const leaker = makePackage({ kind: 'can', defects: ['leaking'] });
 
@@ -347,11 +370,11 @@ describe('flip and rotate follow the orientation rules', () => {
     expect(faceOf(press(s0, 'flip', 'flip'))).toBe('up:3 upside-down');
   });
 
-  it('flips a cylinder: side, top, upside-down side, bottom, side', () => {
+  it('flips a cylinder: side, top, the same side upside-down, bottom, side', () => {
     const s0 = start('can');
     expect([s0, press(s0, 'flip'), press(s0, 'flip', 'flip'), press(s0, 'flip', 'flip', 'flip'), press(s0, 'flip', 'flip', 'flip', 'flip')].map(faceOf)).toEqual([
       'up:0',
-      'up:1',
+      'up:2',
       'up:0 upside-down',
       'down:0',
       'up:0',
@@ -394,22 +417,59 @@ describe('flip and rotate follow the orientation rules', () => {
     expect(s.handling.visited).toEqual(['up:0', 'up:4', 'up:2', 'down:0']);
   });
 
-  it('never refuses a rotate that has nowhere new to show, and gives away no numbers', () => {
+  it('turns a can round to its back and gives away no numbers', () => {
     const can = press(start('can'), 'rotate');
     expect(rotateBox(start('can')).message).toBe('You turn the package.');
     expect(flipBox(start('can')).message).toBe('You flip the package over.');
-    expect(faceOf(can)).toBe('up:0');
+    expect(faceOf(can)).toBe('up:1');
     expect(can.handling.turn).toBe(1);
+    expect(faceOf(press(can, 'rotate'))).toBe('up:0');
   });
 
-  it('keeps the tetrahedron and the prism as they were', () => {
+  it('never refuses a rotate that has nowhere new to show', () => {
+    const top = press(start('can'), 'flip');
+    const spun = rotateBox(top);
+    expect(spun.message).toBe('You turn the package.');
+    expect(faceOf(spun.state)).toBe('up:2');
+    expect(spun.state.handling.turn).toBe(1);
+  });
+
+  it('flips an octahedron between a face and the face below it', () => {
+    const octa = start('octa');
+    expect(faceOf(press(octa, 'rotate', 'rotate'))).toBe('up:2');
+    expect(faceOf(press(octa, 'rotate', 'rotate', 'flip'))).toBe('down:2');
+    expect(faceOf(press(octa, 'rotate', 'rotate', 'flip', 'rotate'))).toBe('down:3');
+    expect(faceOf(press(octa, 'flip', 'flip'))).toBe('up:0');
+    expect(press(octa, 'flip', 'rotate', 'flip').handling.visited).toEqual(['up:0', 'down:0', 'down:1', 'up:1']);
+  });
+
+  it('flips a tetrahedron between a face and its one bottom', () => {
     const tetra = start('tetra');
     expect(faceOf(press(tetra, 'rotate', 'rotate'))).toBe('up:2');
-    expect(faceOf(press(tetra, 'rotate', 'rotate', 'flip'))).toBe('down:2');
+    expect(faceOf(press(tetra, 'rotate', 'rotate', 'flip'))).toBe('down:0');
+    expect(faceOf(press(tetra, 'rotate', 'rotate', 'flip', 'flip'))).toBe('up:2');
     expect(faceOf(press(tetra, 'flip', 'flip'))).toBe('up:0');
+    expect(press(tetra, 'flip', 'rotate', 'flip').handling.visited).toEqual(['up:0', 'down:0', 'up:1']);
+  });
+
+  it('flips a prism: side, top, the opposite side upside-down, bottom, side', () => {
     const prism = start('prism');
-    expect(flipBox(prism).message).toBe('This shape cannot be flipped.');
+    expect(flipBox(prism).message).toBe('You flip the package over.');
+    expect([prism, press(prism, 'flip'), press(prism, 'flip', 'flip'), press(prism, 'flip', 'flip', 'flip'), press(prism, 'flip', 'flip', 'flip', 'flip')].map(faceOf)).toEqual([
+      'up:0',
+      'up:3',
+      'up:2 upside-down',
+      'down:0',
+      'up:0',
+    ]);
     expect(faceOf(press(prism, 'rotate', 'rotate', 'rotate'))).toBe('up:0');
+    expect(press(prism, 'flip', 'flip', 'flip').handling.visited).toEqual(['up:0', 'up:3', 'up:2', 'down:0']);
+  });
+
+  it('lets every shape be flipped', () => {
+    for (const kind of ['box', 'parcel', 'can', 'jar', 'tube', 'prism', 'tetra', 'octa'] as const) {
+      expect(flipBox(start(kind)).message).toBe('You flip the package over.');
+    }
   });
 
   it('opens and uses the tools only upright on a side', () => {

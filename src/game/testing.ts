@@ -1,3 +1,4 @@
+import { typeNamesFor } from './shapes';
 import type { Address, InspectionTool, Inventory, Package, RepairTool } from './types';
 
 export const goodAddress: Address = {
@@ -12,6 +13,7 @@ export function makePackage(over: Partial<Package> = {}): Package {
   return {
     id: 1,
     kind: 'box',
+    typeName: typeNamesFor(over.kind ?? 'box')[0],
     defects: [],
     address: goodAddress,
     declaredWeightKg: 2,

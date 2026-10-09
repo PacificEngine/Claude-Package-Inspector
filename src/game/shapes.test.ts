@@ -10,27 +10,29 @@ import {
   placementOf,
   ringLength,
   rotateDelta,
-  shapeName,
-  shapeNote,
   shownFace,
   sideCount,
+  typeNamesFor,
+  typeNote,
 } from './shapes';
 import type { PackageKind } from './types';
 
-const KINDS: PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra'];
+const KINDS: PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra', 'octa'];
 
 describe('shapes', () => {
   it('gives every kind a shape', () => {
     for (const kind of KINDS) expect(SHAPE_OF_KIND[kind]).toBeDefined();
+    expect(SHAPE_OF_KIND.octa).toBe('octa');
   });
 
   it('counts placement faces on each side, including the top', () => {
     expect([faceCount('box', 'up'), faceCount('box', 'down')]).toEqual([5, 1]);
     expect([faceCount('parcel', 'up'), faceCount('parcel', 'down')]).toEqual([5, 1]);
-    expect([faceCount('can', 'up'), faceCount('can', 'down')]).toEqual([2, 1]);
-    expect([faceCount('jar', 'up'), faceCount('tube', 'down')]).toEqual([2, 1]);
-    expect([faceCount('prism', 'up'), faceCount('prism', 'down')]).toEqual([3, 0]);
-    expect([faceCount('tetra', 'up'), faceCount('tetra', 'down')]).toEqual([4, 4]);
+    expect([faceCount('can', 'up'), faceCount('can', 'down')]).toEqual([3, 1]);
+    expect([faceCount('jar', 'up'), faceCount('tube', 'down')]).toEqual([3, 1]);
+    expect([faceCount('prism', 'up'), faceCount('prism', 'down')]).toEqual([4, 1]);
+    expect([faceCount('tetra', 'up'), faceCount('tetra', 'down')]).toEqual([4, 1]);
+    expect([faceCount('octa', 'up'), faceCount('octa', 'down')]).toEqual([4, 4]);
   });
 
   it('names a face by side and index', () => {
@@ -54,13 +56,27 @@ describe('shapes', () => {
     expect(placementOf(pkg, 'torn_tape')).toEqual({ side: 'up', face: 2 });
   });
 
-  it('names only the shape in the first note', () => {
-    expect(shapeNote('box')).toBe('Shape: cuboid');
-    expect(shapeNote('parcel')).toBe('Shape: cuboid');
-    expect(shapeNote('can')).toBe('Shape: cylinder');
-    expect(shapeNote('prism')).toBe('Shape: triangular prism');
-    expect(shapeNote('tetra')).toBe('Shape: tetrahedron');
-    expect(shapeName('jar')).toBe('cylinder');
+  it('names the package by its type in the first note', () => {
+    expect(typeNote(makePackage({ kind: 'box' }))).toBe('Type: box');
+    expect(typeNote(makePackage({ kind: 'can' }))).toBe('Type: can');
+    expect(typeNote(makePackage({ kind: 'prism', typeName: 'wedge' }))).toBe('Type: wedge');
+    expect(typeNote(makePackage({ kind: 'tetra', typeName: 'caltrops' }))).toBe('Type: caltrops');
+    expect(typeNote(makePackage({ kind: 'octa', typeName: 'pyrite' }))).toBe('Type: pyrite');
+  });
+
+  it('lists the type names each kind can go by', () => {
+    for (const kind of ['box', 'parcel', 'can', 'jar', 'tube'] as const) expect(typeNamesFor(kind)).toEqual([kind]);
+    expect(typeNamesFor('prism')).toEqual(['tent', 'wedge']);
+    expect(typeNamesFor('tetra')).toEqual(['pyraminx', 'caltrops']);
+    expect(typeNamesFor('octa')).toEqual(['diamond', 'pyrite']);
+  });
+
+  it('defaults a test package type name from its kind', () => {
+    expect(makePackage().typeName).toBe('box');
+    expect(makePackage({ kind: 'jar' }).typeName).toBe('jar');
+    expect(makePackage({ kind: 'prism' }).typeName).toBe('tent');
+    expect(makePackage({ kind: 'tetra' }).typeName).toBe('pyraminx');
+    expect(makePackage({ kind: 'octa' }).typeName).toBe('diamond');
   });
 });
 
@@ -71,9 +87,16 @@ describe('orientation', () => {
   };
 
   it('has side counts, ring lengths and tops per shape', () => {
-    expect([sideCount('box'), sideCount('can'), sideCount('prism'), sideCount('tetra')]).toEqual([4, 1, 3, 4]);
-    expect([ringLength('box'), ringLength('tube'), ringLength('prism'), ringLength('tetra')]).toEqual([4, 4, 1, 2]);
-    expect([hasTop('box'), hasTop('jar'), hasTop('prism'), hasTop('tetra')]).toEqual([true, true, false, false]);
+    expect([sideCount('box'), sideCount('can'), sideCount('prism'), sideCount('tetra'), sideCount('octa')]).toEqual([
+      4, 2, 3, 4, 4,
+    ]);
+    expect([ringLength('box'), ringLength('tube'), ringLength('prism'), ringLength('tetra'), ringLength('octa')]).toEqual([
+      4, 4, 4, 2, 2,
+    ]);
+    expect([hasTop('box'), hasTop('parcel'), hasTop('can'), hasTop('jar'), hasTop('tube'), hasTop('prism')]).toEqual([
+      true, true, true, true, true, true,
+    ]);
+    expect([hasTop('tetra'), hasTop('octa')]).toEqual([false, false]);
   });
 
   it('flips a box through side, top, upside-down opposite side, bottom (face 1)', () => {
@@ -90,21 +113,34 @@ describe('orientation', () => {
     expect([0, 1, 2, 3].map((p) => at('parcel', p, 1))).toEqual(['up:1', 'up:4', 'up:3 upside-down', 'down:0']);
   });
 
-  it('flips a cylinder through side, top, upside-down side, bottom', () => {
+  it('flips a cylinder through side, top (face 3), the same side upside-down, bottom', () => {
     expect([0, 1, 2, 3, 4].map((p) => at('can', p, 0))).toEqual([
       'up:0',
-      'up:1',
+      'up:2',
       'up:0 upside-down',
       'down:0',
       'up:0',
     ]);
   });
 
+  it('rotates a cylinder between its front and back', () => {
+    expect([0, 1, 2].map((t) => at('can', 0, t))).toEqual(['up:0', 'up:1', 'up:0']);
+    expect(at('jar', 2, 1)).toBe('up:1 upside-down');
+    expect(orient('can', 1, 0).face).toBe(2);
+  });
+
+  it('spins a cylinder on its top as for boxes', () => {
+    expect([0, 1, 2, 3, 4].map((t) => shownFace('can', 1, t).spin)).toEqual([0, 1, 2, 3, 0]);
+    expect([0, 1, 2, 3, 4].map((t) => at('can', 1, t))).toEqual(['up:2', 'up:2', 'up:2', 'up:2', 'up:2']);
+    expect(shownFace('tube', 3, 1).spin).toBe(3);
+  });
+
   it('turns the other way once the package is upside-down or at the bottom', () => {
     expect([0, 1, 2, 3].map((p) => rotateDelta('box', p))).toEqual([1, 1, -1, -1]);
     expect([0, 1, 2, 3].map((p) => rotateDelta('can', p))).toEqual([1, 1, -1, -1]);
+    expect([0, 1, 2, 3].map((p) => rotateDelta('prism', p))).toEqual([1, 1, -1, -1]);
     expect([0, 1].map((p) => rotateDelta('tetra', p))).toEqual([1, 1]);
-    expect(rotateDelta('prism', 0)).toBe(1);
+    expect([0, 1].map((p) => rotateDelta('octa', p))).toEqual([1, 1]);
   });
 
   it('follows the worked example: face 1, top, rotate, upside-down face 4, bottom, rotate, face 1', () => {
@@ -150,20 +186,43 @@ describe('orientation', () => {
     expect(shownFace('box', 0, 3).spin).toBe(0);
   });
 
-  it('flips a tetrahedron between four up faces and four down faces and never upside-down', () => {
-    expect([0, 1, 0].map((p) => at('tetra', p, 2))).toEqual(['up:2', 'down:2', 'up:2']);
-    expect(shownFace('tetra', 1, 0).part).toBe('bottom');
+  it('flips an octahedron between four up faces and four down faces and never upside-down', () => {
+    expect([0, 1, 0].map((p) => at('octa', p, 2))).toEqual(['up:2', 'down:2', 'up:2']);
+    expect([0, 1, 2, 3, 4].map((t) => at('octa', 0, t))).toEqual(['up:0', 'up:1', 'up:2', 'up:3', 'up:0']);
+    expect([0, 1, 2, 3, 4].map((t) => at('octa', 1, t))).toEqual(['down:0', 'down:1', 'down:2', 'down:3', 'down:0']);
+    expect(shownFace('octa', 1, 0).part).toBe('bottom');
   });
 
-  it('never flips a prism', () => {
-    expect(at('prism', 0, 4)).toBe('up:1');
-    expect(at('prism', 3, 4)).toBe('up:1'); // a stray position collapses back to the only one
+  it('flips a tetrahedron between its four faces and its one bottom', () => {
+    expect([0, 1, 2, 3, 4].map((t) => at('tetra', 0, t))).toEqual(['up:0', 'up:1', 'up:2', 'up:3', 'up:0']);
+    expect([0, 1, 2, 3, 5].map((t) => at('tetra', 1, t))).toEqual(['down:0', 'down:0', 'down:0', 'down:0', 'down:0']);
+    expect(shownFace('tetra', 1, 2).part).toBe('bottom');
+    expect([0, 1, 2].map((p) => at('tetra', p, 2))).toEqual(['up:2', 'down:0', 'up:2']);
+  });
+
+  it('flips a prism through side, top, the opposite side upside-down, bottom', () => {
+    expect([0, 1, 2, 3, 4].map((p) => at('prism', p, 0))).toEqual([
+      'up:0',
+      'up:3',
+      'up:2 upside-down',
+      'down:0',
+      'up:0',
+    ]);
+    expect(shownFace('prism', 1, 0).part).toBe('top');
+    expect(shownFace('prism', 3, 0).part).toBe('bottom');
+  });
+
+  it('flips a prism the same way from its second side, never spinning the top and bottom', () => {
+    expect([0, 1, 2, 3].map((p) => at('prism', p, 1))).toEqual(['up:1', 'up:3', 'up:0 upside-down', 'down:0']);
+    expect(shownFace('prism', 1, 1).spin).toBe(0);
+    expect(shownFace('prism', 3, 1).spin).toBe(0);
   });
 
   it('derives flipped, face, upsideDown and spin from the position and turn', () => {
     expect(orient('box', 1, 1)).toEqual({ flipPos: 1, turn: 1, flipped: false, face: 4, upsideDown: false, spin: 1 });
     expect(orient('box', 2, 0)).toEqual({ flipPos: 2, turn: 0, flipped: false, face: 2, upsideDown: true, spin: 0 });
     expect(orient('box', 3, 0)).toEqual({ flipPos: 3, turn: 0, flipped: true, face: 0, upsideDown: false, spin: 0 });
-    expect(orient('tetra', 1, 3)).toEqual({ flipPos: 1, turn: 3, flipped: true, face: 3, upsideDown: false, spin: 0 });
+    expect(orient('octa', 1, 3)).toEqual({ flipPos: 1, turn: 3, flipped: true, face: 3, upsideDown: false, spin: 0 });
+    expect(orient('tetra', 1, 3)).toEqual({ flipPos: 1, turn: 3, flipped: true, face: 0, upsideDown: false, spin: 0 });
   });
 });

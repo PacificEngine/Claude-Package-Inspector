@@ -212,7 +212,7 @@ describe('faces', () => {
 
   it('shows an underside defect on the down side face it sits on', () => {
     const wet = makePackage({
-      kind: 'tetra',
+      kind: 'octa',
       defects: ['wet_cardboard'],
       placements: { wet_cardboard: { side: 'down', face: 3 } },
     });
@@ -236,15 +236,15 @@ describe('faces', () => {
     ]);
   });
 
-  it('records the shape as the first note', () => {
-    const notes = notedClues(makePackage({ kind: 'prism' }), newHandling());
+  it('records the type as the first note', () => {
+    const notes = notedClues(makePackage({ kind: 'prism', typeName: 'wedge' }), newHandling());
     expect(notes).toEqual([
       {
         key: 'shape',
         source: 'shape',
         defect: null,
         channel: 'reading',
-        text: 'Shape: triangular prism',
+        text: 'Type: wedge',
       },
     ]);
   });

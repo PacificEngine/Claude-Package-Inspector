@@ -1,5 +1,5 @@
 import type { Item } from './contents';
-export type PackageKind = 'box' | 'can' | 'parcel' | 'jar' | 'tube' | 'prism' | 'tetra';
+export type PackageKind = 'box' | 'can' | 'parcel' | 'jar' | 'tube' | 'prism' | 'tetra' | 'octa';
 
 export type InspectionTool =
   | 'look'
@@ -38,7 +38,8 @@ export type AddressIssue =
   | 'restricted_zone'
   | 'nowhere'
   | 'underwater'
-  | 'lunar';
+  | 'lunar'
+  | 'restricted_person';
 
 export type Verdict = 'ship' | 'reject';
 
@@ -64,6 +65,7 @@ export interface Package {
   labelFace: number; // index of the up face carrying the contents label
   id: number;
   kind: PackageKind;
+  typeName: string; // what the package is called (a tent, a can); cosmetic, the kind drives the rest
   placements?: Partial<Record<DefectId, Placement>>;
   defects: DefectId[];
   address: Address;

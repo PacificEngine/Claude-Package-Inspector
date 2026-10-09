@@ -10,6 +10,7 @@ export const ALL_ADDRESS_ISSUES: AddressIssue[] = [
   'nowhere',
   'underwater',
   'lunar',
+  'restricted_person',
 ];
 
 export const ADDRESS_ISSUE_LABELS: Record<AddressIssue, string> = {
@@ -21,6 +22,7 @@ export const ADDRESS_ISSUE_LABELS: Record<AddressIssue, string> = {
   nowhere: "'Nowhere Lane'",
   underwater: 'Below sea level',
   lunar: 'The Moon',
+  restricted_person: 'Restricted recipient',
 };
 
 export const ADDRESS_ISSUE_MIN_DAY: Record<AddressIssue, number> = {
@@ -32,6 +34,7 @@ export const ADDRESS_ISSUE_MIN_DAY: Record<AddressIssue, number> = {
   nowhere: 4,
   underwater: 5,
   lunar: 5,
+  restricted_person: 3,
 };
 
 const CITY_ZIP: Record<string, string> = {
@@ -49,6 +52,7 @@ export const EVERYDAY_ZIPS: ReadonlyArray<{ city: string; zip: string }> = EVERY
   zip: CITY_ZIP[city],
 }));
 const RECIPIENTS = ['A. Pemberton', 'R. Okafor', 'M. Lindqvist', 'T. Navarro', 'J. Whitlock', 'S. Duarte'];
+export const RESTRICTED_PEOPLE: readonly string[] = ['Z. Blackwood', 'K. Mortimer'];
 const STREETS = ['Elm Street', 'Oak Road', 'Harbor Lane', 'Mill Court', 'Birch Avenue', 'Quarry Way'];
 
 const REPAIRABLE: readonly AddressIssue[] = ['missing_field', 'smudged', 'zip_mismatch'];
@@ -56,6 +60,8 @@ const REPAIRABLE: readonly AddressIssue[] = ['missing_field', 'smudged', 'zip_mi
 export function isRepairableAddressIssue(issue: AddressIssue): boolean {
   return REPAIRABLE.includes(issue);
 }
+
+export const NOWHERE_STREET = '1 Nowhere Lane';
 
 export function addressIssues(a: Address): AddressIssue[] {
   const issues: AddressIssue[] = [];
@@ -66,9 +72,10 @@ export function addressIssues(a: Address): AddressIssue[] {
   if (a.city && a.zip && !smudged && CITY_ZIP[a.city] !== a.zip) issues.push('zip_mismatch');
   if (a.street.startsWith('PO Box')) issues.push('po_box');
   if (a.city === 'Fort Hush') issues.push('restricted_zone');
-  if (a.street.includes('Nowhere Lane')) issues.push('nowhere');
+  if (a.street === NOWHERE_STREET) issues.push('nowhere');
   if (a.city === 'Atlantis') issues.push('underwater');
   if (a.city === 'Moon Base') issues.push('lunar');
+  if (RESTRICTED_PEOPLE.includes(a.recipient)) issues.push('restricted_person');
   return issues;
 }
 
@@ -103,11 +110,13 @@ export function generateAddress(rng: Rng, issue: AddressIssue | null): Address {
     case 'restricted_zone':
       return { ...a, city: 'Fort Hush', zip: CITY_ZIP['Fort Hush'] };
     case 'nowhere':
-      return { ...a, street: '1 Nowhere Lane' };
+      return { ...a, street: NOWHERE_STREET };
     case 'underwater':
       return { ...a, city: 'Atlantis', zip: CITY_ZIP['Atlantis'] };
     case 'lunar':
       return { ...a, city: 'Moon Base', zip: CITY_ZIP['Moon Base'] };
+    case 'restricted_person':
+      return { ...a, recipient: rng.pick(RESTRICTED_PEOPLE) };
   }
 }
 

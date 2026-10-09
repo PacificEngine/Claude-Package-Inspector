@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADDRESS_ISSUE_MIN_DAY } from './address';
+import { ADDRESS_ISSUE_MIN_DAY, ALL_ADDRESS_ISSUES } from './address';
 import { DEFECTS } from './defects';
 import { LAST_DAY, ruleCardForDay } from './rules';
 import { isInspectionItem, unlockedItems } from './shop';
@@ -34,6 +34,6 @@ describe('rule cards stay in step with the shop', () => {
 
   it('lists every address issue as rejectable or allowed on day 7', () => {
     const card = ruleCardForDay(LAST_DAY);
-    expect([...card.rejectAddress, ...card.allowedAddress]).toHaveLength(8);
+    expect([...card.rejectAddress, ...card.allowedAddress].sort()).toEqual([...ALL_ADDRESS_ISSUES].sort());
   });
 });

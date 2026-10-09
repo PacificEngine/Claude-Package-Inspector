@@ -3,7 +3,7 @@ import { newHandling } from '../game/handling';
 import { orient, placementOf, ringLength } from '../game/shapes';
 import { makePackage } from '../game/testing';
 import type { DefectId, PackageKind } from '../game/types';
-import { bodyRect, faceSquare, insideLayout, itemSlots, labelRect, shippingLabelRect } from './geometry';
+import { bodyRect, faceSquare, insideLayout, itemSlots, labelRect, shippingLabelRect, voidRect } from './geometry';
 import { itemMarkersFor, labelMarkersFor, markerNoted, markersFor } from './markers';
 
 const W = 320;
@@ -97,7 +97,7 @@ describe('markerNoted', () => {
 
 describe('new shapes', () => {
   it('puts the missing-label marker on the label rectangle for every kind', () => {
-    for (const kind of ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra'] as const) {
+    for (const kind of ['box', 'can', 'parcel', 'jar', 'tube', 'prism', 'tetra', 'octa'] as const) {
       const body = bodyRect(kind, W, H);
       const pkg = makePackage({ kind, defects: ['missing_label'] });
       const [m] = markersFor(pkg, front, W, H);
@@ -105,15 +105,18 @@ describe('new shapes', () => {
     }
   });
 
-  it('keeps every marker of a prism and a tetrahedron inside the canvas', () => {
+  it('keeps every marker of the prism, tetrahedron and octahedron inside the canvas', () => {
     const faceHandlings = [
       { ...front, used: ['look' as const, 'uv' as const, 'pebble' as const] },
       open,
     ];
-    for (const kind of ['prism', 'tetra'] as const) {
-      // a tetrahedron's down face 3 (a prism has no down side)
-      const down = { ...newHandling(), ...orient(kind, 1, 2), used: ['look' as const, 'rotate' as const] };
-      for (const h of [...faceHandlings, down]) {
+    for (const kind of ['prism', 'tetra', 'octa'] as const) {
+      // every position of the flip ring, with a few turns
+      const ring = Array.from({ length: ringLength(kind) }, (_, flipPos) => flipPos);
+      const placed = ring.flatMap((flipPos) =>
+        [0, 1, 2, 3].map((turn) => ({ ...newHandling(), ...orient(kind, flipPos, turn), used: ['look' as const, 'rotate' as const] })),
+      );
+      for (const h of [...faceHandlings, ...placed]) {
         for (const m of markersFor(makePackage({ kind, defects: ['missing_label', 'bottomless', 'torn_tape'] }), h, W, H)) {
           expect(m.rect.x + m.rect.w).toBeLessThanOrEqual(W);
           expect(m.rect.y + m.rect.h).toBeLessThanOrEqual(H);
@@ -121,6 +124,46 @@ describe('new shapes', () => {
           expect(m.rect.y).toBeGreaterThanOrEqual(0);
         }
       }
+    }
+  });
+});
+
+describe('underside markers of the new shapes', () => {
+  const at = (kind: PackageKind, flipPos: number, turn = 0) => ({
+    ...newHandling(),
+    ...orient(kind, flipPos, turn),
+    used: ['look' as const, 'rotate' as const],
+  });
+
+  it('puts a prism bottomless void in the face square, not spun with the bottom', () => {
+    const sq = faceSquare('prism', bodyRect('prism', W, H));
+    const pkg = makePackage({ kind: 'prism', defects: ['bottomless'] });
+    const [m] = markersFor(pkg, at('prism', 3), W, H);
+    expect(m.view).toBe('back');
+    expect(m.rect.x).toBeGreaterThanOrEqual(sq.x);
+    expect(m.rect.x + m.rect.w).toBeLessThanOrEqual(sq.x + sq.w);
+    expect(m.rect.y).toBeGreaterThanOrEqual(sq.y);
+    expect(m.rect.y + m.rect.h).toBeLessThanOrEqual(sq.y + sq.h);
+    const [turned] = markersFor(pkg, at('prism', 3, 1), W, H);
+    expect(turned.rect).toEqual(m.rect);
+  });
+
+  it('keeps a prism side defect on the side and nothing on its top', () => {
+    const tape = makePackage({ kind: 'prism', defects: ['torn_tape'] });
+    const body = bodyRect('prism', W, H);
+    expect(markersFor(tape, front, W, H)[0].rect).toEqual({ x: body.x, y: body.y, w: body.w, h: 14 });
+    expect(markersFor(makePackage({ kind: 'prism', defects: ['bottomless'] }), at('prism', 1), W, H)).toEqual([]);
+  });
+
+  it('draws the tetrahedron and octahedron undersides on the body, unspun', () => {
+    const body = bodyRect('tetra', W, H);
+    const [t] = markersFor(makePackage({ kind: 'tetra', defects: ['bottomless'] }), at('tetra', 1, 3), W, H);
+    expect(t.rect).toEqual(voidRect('tetra', body));
+    const obody = bodyRect('octa', W, H);
+    for (const turn of [0, 1, 2, 3]) {
+      const octa = makePackage({ kind: 'octa', defects: ['bottomless'], placements: { bottomless: { side: 'down', face: turn } } });
+      const [o] = markersFor(octa, at('octa', 1, turn), W, H);
+      expect(o.rect).toEqual(voidRect('octa', obody));
     }
   });
 });
@@ -157,6 +200,14 @@ describe('label markers', () => {
       'shipping',
       'contents',
     ]);
+  });
+
+  it('offers the contents label on the back of a can only when the back is showing', () => {
+    const can = makePackage({ kind: 'can', labelFace: 1 });
+    expect(labelMarkersFor(can, front, W, H).map((m) => m.label)).toEqual(['shipping']);
+    const back = { ...front, ...orient('can', 0, 1) };
+    expect(labelMarkersFor(can, back, W, H).map((m) => m.label)).toEqual(['contents']);
+    expect(labelMarkersFor(can, { ...front, ...orient('can', 0, 2) }, W, H).map((m) => m.label)).toEqual(['shipping']);
   });
 
   it('offers no label when the box is open or flipped', () => {

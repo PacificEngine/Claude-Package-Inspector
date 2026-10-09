@@ -40,7 +40,7 @@ const TOP: Partial<Record<DefectId, OnBody>> = {
   torn_tape: (s) => ({ x: s.x, y: s.y + s.h * 0.43, w: s.w, h: 14 }),
 };
 
-// Underside defects, relative to the face square (or the body for a tetrahedron).
+// Underside defects, relative to the face square (or the body for a tetrahedron or octahedron).
 const BACK: Partial<Record<DefectId, OnBody>> = {
   bottomless: (b, kind) => voidRect(kind, b),
   wet_cardboard: (b) => ({ x: b.x + b.w * 0.08, y: b.y + b.h * 0.4, w: b.w * 0.44, h: b.h * 0.4 }),
@@ -65,10 +65,10 @@ export function markerRectFor(
     return r && turnAbout(r, sq, shown.spin);
   }
   if (shown.part === 'bottom') {
-    const tetra = SHAPE_OF_KIND[pkg.kind] === 'tetra';
-    const area = tetra ? body : faceSquare(pkg.kind, body);
+    const onBody = SHAPE_OF_KIND[pkg.kind] === 'tetra' || SHAPE_OF_KIND[pkg.kind] === 'octa';
+    const area = onBody ? body : faceSquare(pkg.kind, body);
     const r = BACK[defect]?.(area, pkg.kind);
-    return r && (tetra ? r : turnAbout(r, area, shown.spin));
+    return r && (onBody ? r : turnAbout(r, area, shown.spin));
   }
   const r = FRONT[defect]?.(body, pkg.kind);
   return r && (shown.upsideDown ? turnAbout(r, body, 2) : r);

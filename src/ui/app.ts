@@ -34,7 +34,7 @@ import { drawPackage } from './packageArt';
 import { DEFECTS } from '../game/defects';
 import type { DefectId, Handling, Package } from '../game/types';
 import { viewOf } from '../game/handling';
-import { itemsIn, legitItemIds } from '../game/contents';
+import { declaredAfter, itemsIn, legitItemIds } from '../game/contents';
 import { itemMarkersFor, labelMarkersFor, markerNoted, markersFor } from './markers';
 import type { Rect } from './geometry';
 import {
@@ -85,43 +85,42 @@ function labelled(b: HTMLButtonElement, label: string): HTMLButtonElement {
   return b;
 }
 
-const listOrNone = (items: string[]): HTMLElement =>
-  items.length > 0
-    ? el('ul', {}, items.map((text) => el('li', { text })))
-    : el('p', { cls: 'muted', text: 'None today.' });
-
 // The body of the active reference tab under the rule card.
 function referenceBody(tab: TabId, s: ShiftState): HTMLElement[] {
   if (tab === 'shapes') {
     return shapeGuide(s.day).flatMap((shape) => [
       el('h4', { text: shape.name }),
-      el('div', { cls: 'muted', text: shape.kinds }),
       el('p', { text: shape.description }),
     ]);
   }
   if (tab === 'addresses') {
     const guide = addressGuide(s.card);
-    const rules = el(
-      'ul',
-      {},
-      guide.rules.map((r) =>
-        el('li', { text: `${r.text} (${r.rejected ? 'rejected' : 'tolerated'} today)` }),
+    const example = el(
+      'div',
+      { cls: 'labels' },
+      guide.example.map((row) =>
+        el('div', { cls: 'label-card' }, [el('div', { text: row.line }), el('div', { cls: 'muted', text: row.meaning })]),
       ),
     );
-    if (guide.cityZips.length === 0) return [rules];
+    if (guide.cityZips.length === 0) return [example];
     const table = el('table', { cls: 'zips' }, [
       el('tr', {}, [el('th', { text: 'City' }), el('th', { text: 'ZIP' })]),
       ...guide.cityZips.map((c) => el('tr', {}, [el('td', { text: c.city }), el('td', { text: c.zip })])),
     ]);
-    return [rules, table];
+    return [example, table];
   }
   if (tab === 'restrictions') {
     const guide = restrictionGuide(s.card);
+    const groups: Array<[string, string[]]> = [
+      ['People', guide.people],
+      ['Towns', guide.towns],
+      ['Addresses', guide.addresses],
+      ['Items', guide.items],
+    ];
     return [
-      el('h4', { text: 'Restricted destinations' }),
-      listOrNone(guide.destinations),
-      el('h4', { text: 'Restricted items' }),
-      listOrNone(guide.items),
+      ...groups
+        .filter(([, list]) => list.length > 0)
+        .flatMap(([title, list]) => [el('h4', { text: title }), el('ul', {}, list.map((text) => el('li', { text })))]),
       ...(guide.items.length > 0
         ? [el('p', { text: 'A restricted item can be thrown away: open the box, then use Throw away.' })]
         : []),
@@ -319,11 +318,13 @@ export function mount(root: HTMLElement, seed: number): void {
     const shippingPanel = s.handling.addressRead
       ? el('div', { cls: 'label-card' }, [
           ...addressLines(pkg.address).map((line) => el('div', { text: line })),
-          el('div', { text: `Declared weight: ${pkg.declaredWeightKg} kg` }),
         ])
       : hint('Shipping label: find it on the package and click it.');
     const contentsPanel = s.handling.contentsRead
-      ? el('div', { cls: 'label-card' }, [el('div', { text: `Contents: ${labelText(pkg, s.handling)}` })])
+      ? el('div', { cls: 'label-card' }, [
+          el('div', { text: `Contents: ${labelText(pkg, s.handling)}` }),
+          el('div', { text: `Declared weight: ${declaredAfter(pkg, s.handling.discarded)} kg` }),
+        ])
       : hint('Contents label: find it on the package and click it.');
     const label = el('div', { cls: 'labels' }, [shippingPanel, contentsPanel]);
     const inside =

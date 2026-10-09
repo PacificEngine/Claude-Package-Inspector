@@ -1,4 +1,4 @@
-import { EVERYDAY_ZIPS } from '../game/address';
+import { EVERYDAY_ZIPS, NOWHERE_STREET, RESTRICTED_PEOPLE } from '../game/address';
 import { kindsForDay } from '../game/packages';
 import type { RuleCard } from '../game/rules';
 import { SHAPE_OF_KIND, type Shape } from '../game/shapes';
@@ -14,7 +14,6 @@ export const TAB_LABELS: Record<TabId, string> = {
 };
 
 const FORMAT_RULES: AddressIssue[] = ['missing_field', 'zip_mismatch', 'smudged'];
-const DESTINATIONS: AddressIssue[] = ['po_box', 'restricted_zone', 'nowhere', 'underwater', 'lunar'];
 
 const mentioned = (card: RuleCard, issues: AddressIssue[]): AddressIssue[] =>
   issues.filter((i) => card.rejectAddress.includes(i) || card.allowedAddress.includes(i));
@@ -22,72 +21,76 @@ const mentioned = (card: RuleCard, issues: AddressIssue[]): AddressIssue[] =>
 export function tabsFor(card: RuleCard): TabId[] {
   const tabs: TabId[] = ['rules', 'shapes'];
   if (mentioned(card, FORMAT_RULES).length > 0) tabs.push('addresses');
-  const rejectedDestinations = DESTINATIONS.filter((i) => card.rejectAddress.includes(i));
-  if (rejectedDestinations.length > 0 || card.restrictedItems.length > 0) tabs.push('restrictions');
+  const g = restrictionGuide(card);
+  if (g.people.length + g.towns.length + g.addresses.length + g.items.length > 0) tabs.push('restrictions');
   return tabs;
 }
 
-const SHAPE_TEXT: Record<Shape, { name: string; kinds: string; description: string }> = {
+const SHAPE_TEXT: Record<Shape, { name: string; description: string }> = {
   cuboid: {
-    name: 'Cuboid',
-    kinds: 'Boxes and parcels',
+    name: 'Boxes and parcels',
     description: 'Four sides to rotate. Flip tumbles it: side, top, the opposite side upside-down, bottom. Rotating on the top or bottom changes which side comes next, and the bottom turns the other way.',
   },
   cylinder: {
-    name: 'Cylinder',
-    kinds: 'Cans, jars and tubes',
-    description: 'One round side. Flip tumbles it: side, top, the side upside-down, bottom.',
+    name: 'Cans, jars and tubes',
+    description: 'Two faces, front and back, to rotate between. Flip tumbles it: side, top, the same side upside-down, bottom.',
   },
   prism: {
-    name: 'Triangular prism',
-    kinds: 'Prisms',
-    description: 'Three sides to rotate; it cannot be flipped.',
+    name: 'Tents and wedges',
+    description: 'Three sides to rotate. Flip tumbles it: side, top, the opposite side upside-down, bottom.',
   },
   tetra: {
-    name: 'Tetrahedron',
-    kinds: 'Tetrahedrons',
+    name: 'Pyraminxes and caltrops',
+    description: 'Four faces to rotate. Flip it to see the bottom.',
+  },
+  octa: {
+    name: 'Diamonds and pyrites',
     description: 'Four faces to rotate; flip it for four more.',
   },
 };
 
-const SHAPE_ORDER: Shape[] = ['cuboid', 'cylinder', 'prism', 'tetra'];
+const SHAPE_ORDER: Shape[] = ['cuboid', 'cylinder', 'prism', 'tetra', 'octa'];
 
-export function shapeGuide(day: number): Array<{ name: string; kinds: string; description: string }> {
+export function shapeGuide(day: number): Array<{ name: string; description: string }> {
   const today = new Set(kindsForDay(day).map((k) => SHAPE_OF_KIND[k]));
   return SHAPE_ORDER.filter((s) => today.has(s)).map((s) => SHAPE_TEXT[s]);
 }
 
-const FORMAT_TEXT: Record<'missing_field' | 'zip_mismatch' | 'smudged', string> = {
-  missing_field: 'A label missing a recipient, street, city or ZIP',
-  zip_mismatch: 'A ZIP that does not match the city',
-  smudged: 'A smudged label',
-};
+const EXAMPLE_LABEL = [
+  { line: 'A. Pemberton', meaning: 'Recipient: an initial and a surname.' },
+  { line: '12 Elm Street', meaning: 'Street: a house number and a street name.' },
+  { line: 'Maplewood 10001', meaning: 'City and ZIP: the ZIP must belong to the city.' },
+  { line: 'Return: 40 Oak Road, Riverton', meaning: 'Return address: where the package came from.' },
+];
 
 export function addressGuide(card: RuleCard): {
-  rules: Array<{ text: string; rejected: boolean }>;
+  example: Array<{ line: string; meaning: string }>;
   cityZips: Array<{ city: string; zip: string }>;
 } {
-  const rules = mentioned(card, FORMAT_RULES).map((issue) => ({
-    text: FORMAT_TEXT[issue as keyof typeof FORMAT_TEXT],
-    rejected: card.rejectAddress.includes(issue),
-  }));
   const hasZipRule = mentioned(card, ['zip_mismatch']).length > 0;
-  return { rules, cityZips: hasZipRule ? EVERYDAY_ZIPS.map((c) => ({ ...c })) : [] };
+  return {
+    example: EXAMPLE_LABEL.map((row) => ({ ...row })),
+    cityZips: hasZipRule ? EVERYDAY_ZIPS.map((c) => ({ ...c })) : [],
+  };
 }
 
-const DESTINATION_TEXT: Record<'po_box' | 'restricted_zone' | 'nowhere' | 'underwater' | 'lunar', string> = {
-  po_box: 'PO boxes',
-  restricted_zone: 'Fort Hush (ZIP 99001)',
-  nowhere: "'Nowhere Lane'",
-  underwater: 'Atlantis (below sea level)',
-  lunar: 'Moon Base',
-};
+const TOWN_TEXT: Array<[AddressIssue, string]> = [
+  ['restricted_zone', 'Fort Hush (ZIP 99001)'],
+  ['underwater', 'Atlantis (below sea level)'],
+  ['lunar', 'Moon Base'],
+];
 
-export function restrictionGuide(card: RuleCard): { destinations: string[]; items: string[] } {
+export function restrictionGuide(card: RuleCard): {
+  people: string[];
+  towns: string[];
+  addresses: string[];
+  items: string[];
+} {
+  const rejected = (issue: AddressIssue): boolean => card.rejectAddress.includes(issue);
   return {
-    destinations: DESTINATIONS.filter((i) => card.rejectAddress.includes(i)).map(
-      (i) => DESTINATION_TEXT[i as keyof typeof DESTINATION_TEXT],
-    ),
+    people: rejected('restricted_person') ? [...RESTRICTED_PEOPLE] : [],
+    towns: TOWN_TEXT.filter(([issue]) => rejected(issue)).map(([, text]) => text),
+    addresses: rejected('nowhere') ? [NOWHERE_STREET] : [],
     items: [...card.restrictedItems],
   };
 }

@@ -14,7 +14,7 @@ import {
   unresolvedProblems,
   type RuleCard,
 } from './rules';
-import { faceKey, orient, ringLength, rotateDelta, shownFace } from './shapes';
+import { faceKey, orient, rotateDelta, shownFace } from './shapes';
 import type {
   AddressIssue,
   DefectId,
@@ -151,7 +151,6 @@ export function flipBox(s: ShiftState): ActionResult {
   if (!pkg) return idle(s);
   if (!s.inventory.tools.includes('rotate')) return { state: s, message: 'You do not own that tool.' };
   if (s.handling.opened) return { state: s, message: 'Close the box first.' };
-  if (ringLength(pkg.kind) === 1) return { state: s, message: 'This shape cannot be flipped.' };
   const flipped = reorient(s, pkg.kind, s.handling.flipPos + 1, s.handling.turn);
   const used = s.handling.used.includes('rotate') ? s.handling.used : [...s.handling.used, 'rotate' as const];
   return {

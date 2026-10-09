@@ -3,14 +3,19 @@ import { CATALOG, MARBLE, PACKAGING_KG, STOWAWAYS, round1, type Item } from './c
 import { DEFECTS } from './defects';
 import type { Rng } from './rng';
 import type { RuleCard } from './rules';
-import { SURFACE_DEFECTS, faceCount, isUndersideDefect, sideCount } from './shapes';
+import { SURFACE_DEFECTS, faceCount, isUndersideDefect, sideCount, typeNamesFor } from './shapes';
 import type { DefectId, Package, PackageKind, Placement } from './types';
 
 const BASE_KINDS: readonly PackageKind[] = ['box', 'can', 'parcel', 'jar', 'tube'];
 
 // New shapes arrive as the days go on.
 export function kindsForDay(day: number): PackageKind[] {
-  return [...BASE_KINDS, ...(day >= 4 ? (['prism'] as const) : []), ...(day >= 6 ? (['tetra'] as const) : [])];
+  return [
+    ...BASE_KINDS,
+    ...(day >= 4 ? (['prism'] as const) : []),
+    ...(day >= 6 ? (['tetra'] as const) : []),
+    ...(day >= 7 ? (['octa'] as const) : []),
+  ];
 }
 
 // From day 2 the Rotate / flip tool is on sale, so defects start hiding on other faces.
@@ -24,7 +29,7 @@ function placeDefects(rng: Rng, kind: PackageKind, defects: DefectId[], day: num
       placements[id] = { side: 'up', face: top ? sideCount(kind) : rng.int(sideCount(kind)) };
     } else if (SURFACE_DEFECTS.includes(id)) {
       placements[id] = { side: 'up', face: rng.int(sideCount(kind)) };
-    } else if (isUndersideDefect(id) && faceCount(kind, 'down') > 0) {
+    } else if (isUndersideDefect(id)) {
       placements[id] = { side: 'down', face: rng.int(faceCount(kind, 'down')) };
     }
   }
@@ -111,18 +116,24 @@ export function generatePackage(rng: Rng, id: number, card: RuleCard): Package {
     contents[victim] = { ...contents[victim], leaking: true };
   }
   const actualWeightKg = round1(packagingKg + contents.reduce((s, i) => s + i.weightKg, 0));
+  const address = generateAddress(rng, issue);
+  const fee = 15 + card.day * 5 + rng.int(10);
+  // Only draw for kinds with a choice of names, so the other kinds keep their seeds.
+  const names = typeNamesFor(kind);
+  const typeName = names.length > 1 ? rng.pick(names) : names[0];
 
   return {
     id,
     kind,
+    typeName,
     defects,
-    address: generateAddress(rng, issue),
+    address,
     declaredWeightKg,
     actualWeightKg,
     contents,
     packagingKg,
     labelFace,
-    fee: 15 + card.day * 5 + rng.int(10),
+    fee,
     ...(placements ? { placements } : {}),
   };
 }

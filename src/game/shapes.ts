@@ -1,6 +1,6 @@
 import type { DefectId, Package, PackageKind, Placement, Side } from './types';
 
-export type Shape = 'cuboid' | 'cylinder' | 'prism' | 'tetra';
+export type Shape = 'cuboid' | 'cylinder' | 'prism' | 'tetra' | 'octa';
 
 export const SHAPE_OF_KIND: Record<PackageKind, Shape> = {
   box: 'cuboid',
@@ -10,24 +10,26 @@ export const SHAPE_OF_KIND: Record<PackageKind, Shape> = {
   tube: 'cylinder',
   prism: 'prism',
   tetra: 'tetra',
+  octa: 'octa',
 };
 
 const FACES: Record<Shape, Record<Side, number>> = {
   cuboid: { up: 5, down: 1 }, // four sides and the top / the bottom
-  cylinder: { up: 2, down: 1 }, // the round side and the top / the bottom
-  prism: { up: 3, down: 0 },
-  tetra: { up: 4, down: 4 },
+  cylinder: { up: 3, down: 1 }, // the front and back of the round side and the top / the bottom
+  prism: { up: 4, down: 1 }, // three sides and the top / the bottom
+  tetra: { up: 4, down: 1 }, // four faces / the bottom
+  octa: { up: 4, down: 4 }, // four upper faces / four lower faces
 };
 
-const SIDE_COUNT: Record<Shape, number> = { cuboid: 4, cylinder: 1, prism: 3, tetra: 4 };
+const SIDE_COUNT: Record<Shape, number> = { cuboid: 4, cylinder: 2, prism: 3, tetra: 4, octa: 4 };
 // How many positions a flip cycles through.
-const RING_LENGTH: Record<Shape, number> = { cuboid: 4, cylinder: 4, prism: 1, tetra: 2 };
+const RING_LENGTH: Record<Shape, number> = { cuboid: 4, cylinder: 4, prism: 4, tetra: 2, octa: 2 };
 
 export const sideCount = (kind: PackageKind): number => SIDE_COUNT[SHAPE_OF_KIND[kind]];
 export const ringLength = (kind: PackageKind): number => RING_LENGTH[SHAPE_OF_KIND[kind]];
 export const hasTop = (kind: PackageKind): boolean => {
   const shape = SHAPE_OF_KIND[kind];
-  return shape === 'cuboid' || shape === 'cylinder';
+  return shape === 'cuboid' || shape === 'cylinder' || shape === 'prism';
 };
 
 const mod = (n: number, m: number): number => ((n % m) + m) % m;
@@ -46,24 +48,29 @@ export function shownFace(kind: PackageKind, flipPos: number, turn: number): Sho
   const shape = SHAPE_OF_KIND[kind];
   const sides = SIDE_COUNT[shape];
   const pos = mod(flipPos, RING_LENGTH[shape]);
-  if (shape === 'prism') {
-    return { placement: { side: 'up', face: mod(turn, sides) }, part: 'side', upsideDown: false, spin: 0 };
-  }
   if (shape === 'tetra') {
+    return pos === 0
+      ? { placement: { side: 'up', face: mod(turn, sides) }, part: 'side', upsideDown: false, spin: 0 }
+      : { placement: { side: 'down', face: 0 }, part: 'bottom', upsideDown: false, spin: 0 };
+  }
+  if (shape === 'octa') {
     return pos === 0
       ? { placement: { side: 'up', face: mod(turn, sides) }, part: 'side', upsideDown: false, spin: 0 }
       : { placement: { side: 'down', face: mod(turn, sides) }, part: 'bottom', upsideDown: false, spin: 0 };
   }
-  // Cuboids and cylinders: side, top, the opposite side upside-down, bottom.
+  // Cuboids, cylinders and prisms: side, top, the opposite side upside-down, bottom.
+  // A cylinder has only two sides, so its opposite side is the one that was showing;
+  // a prism has three, so its opposite is two along. A prism's triangular top and bottom are
+  // never spun: with three sides, quarter turns would only mislead.
   switch (pos) {
     case 0:
       return { placement: { side: 'up', face: mod(turn, sides) }, part: 'side', upsideDown: false, spin: 0 };
     case 1:
-      return { placement: { side: 'up', face: sides }, part: 'top', upsideDown: false, spin: mod(turn, 4) };
+      return { placement: { side: 'up', face: sides }, part: 'top', upsideDown: false, spin: shape === 'prism' ? 0 : mod(turn, 4) };
     case 2:
       return { placement: { side: 'up', face: mod(turn + 2, sides) }, part: 'side', upsideDown: true, spin: 0 };
     default:
-      return { placement: { side: 'down', face: 0 }, part: 'bottom', upsideDown: false, spin: mod(-turn, 4) };
+      return { placement: { side: 'down', face: 0 }, part: 'bottom', upsideDown: false, spin: shape === 'prism' ? 0 : mod(-turn, 4) };
   }
 }
 
@@ -120,14 +127,18 @@ export function placementOf(pkg: Package, defect: DefectId): Placement {
   return pkg.placements?.[defect] ?? { side: isUndersideDefect(defect) ? 'down' : 'up', face: 0 };
 }
 
-const SHAPE_NAMES: Record<Shape, string> = {
-  cuboid: 'cuboid',
-  cylinder: 'cylinder',
-  prism: 'triangular prism',
-  tetra: 'tetrahedron',
+const TYPE_NAMES: Record<PackageKind, readonly string[]> = {
+  box: ['box'],
+  parcel: ['parcel'],
+  can: ['can'],
+  jar: ['jar'],
+  tube: ['tube'],
+  prism: ['tent', 'wedge'],
+  tetra: ['pyraminx', 'caltrops'],
+  octa: ['diamond', 'pyrite'],
 };
 
-export const shapeName = (kind: PackageKind): string => SHAPE_NAMES[SHAPE_OF_KIND[kind]];
+export const typeNamesFor = (kind: PackageKind): readonly string[] => TYPE_NAMES[kind];
 
-// The note names the shape only; how it turns is explained on the Shapes tab.
-export const shapeNote = (kind: PackageKind): string => `Shape: ${shapeName(kind)}`;
+// The note names what the package is; how it turns is explained on the Shapes tab.
+export const typeNote = (pkg: Package): string => `Type: ${pkg.typeName}`;

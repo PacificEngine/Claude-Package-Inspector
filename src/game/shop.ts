@@ -11,7 +11,6 @@ export const INSPECTION_ITEMS: readonly PurchasableTool[] = [
   'pebble',
   'stethoscope',
 ];
-export const REPAIR_ITEMS: readonly RepairTool[] = ['tape', 'sealant', 'relabel', 'valve', 'foam'];
 
 export const PRICES: Record<ShopItem, number> = {
   rotate: 40,

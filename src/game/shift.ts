@@ -5,7 +5,7 @@ import { openingFine } from './economy';
 import { newHandling, viewOf } from './handling';
 import { CLUE_CHANNEL, cluesFor, markerClues, notedClues, type Clue } from './inspection';
 import { generatePackage } from './packages';
-import { applyRepair } from './repair';
+import { applyRepair, type RepairTarget } from './repair';
 import { createRng } from './rng';
 import {
   isCorrectVerdict,
@@ -177,7 +177,7 @@ export function noteDefect(s: ShiftState, defect: DefectId, view: View): ActionR
 export function inspect(s: ShiftState, tool: InspectionTool): ActionResult {
   const pkg = currentPackage(s);
   if (!pkg) return idle(s);
-  if (tool === 'rotate') return { state: s, message: 'Use Flip box for that.' };
+  if (tool === 'rotate') return { state: s, message: 'Use the Rotate or Flip tool for that.' };
   if (!s.inventory.tools.includes(tool)) return { state: s, message: 'You do not own that tool.' };
   if (s.handling.opened || s.handling.flipPos !== 0) {
     return { state: s, message: 'Close the box and turn it face up first.' };
@@ -260,17 +260,14 @@ export function noteLeak(s: ShiftState, itemId: number): ActionResult {
   };
 }
 
-export function repair(s: ShiftState, tool: RepairTool): ActionResult {
+export function repair(s: ShiftState, tool: RepairTool, target: RepairTarget): ActionResult {
   const pkg = currentPackage(s);
   if (!pkg) return idle(s);
-  const result = applyRepair(pkg, s.handling, s.inventory, tool);
+  const result = applyRepair(pkg, s.handling, s.inventory, tool, target);
   if (!result.ok) return { state: s, message: result.reason };
   return {
     state: { ...s, handling: result.handling, inventory: result.inventory },
-    message:
-      result.fixed.length > 0
-        ? `Fixed: ${result.fixed.join(', ')}.`
-        : 'Nothing to fix with that. Supply wasted.',
+    message: `Fixed: ${result.fixed.join(', ')}.`,
   };
 }
 

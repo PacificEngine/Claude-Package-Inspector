@@ -161,15 +161,16 @@ describe('repair', () => {
     const inv = inventoryWith({ tape: 1 }, ['look', 'rotate']);
     let s = shiftWith([bottomlessBox], 2, inv);
     for (let i = 0; i < 3; i++) s = flipBox(s).state; // to the bottom
-    const r = repair(s, 'tape');
+    const r = repair(s, 'tape', { kind: 'defect', id: 'bottomless' });
     expect(r.message).toBe('Open the box first.');
+    expect(r.state).toBe(s);
   });
 
   it('repairs, spends a supply, and then the package ships for pay', () => {
     const inv = inventoryWith({ tape: 1 });
     let s = shiftWith([tornBox], 2, inv);
     s = openBox(s).state;
-    const r = repair(s, 'tape');
+    const r = repair(s, 'tape', { kind: 'defect', id: 'torn_tape' });
     expect(r.message).toBe('Fixed: Torn tape.');
     expect(r.state.inventory.supplies.tape).toBe(0);
     const shipped = stamp(closeBox(r.state).state, 'ship').state;
@@ -177,10 +178,36 @@ describe('repair', () => {
     expect(shipped.strikes).toBe(0);
   });
 
-  it('says so when a supply was wasted', () => {
+  it('refuses a tool that does not fix the target, leaving the state untouched', () => {
     const inv = inventoryWith({ foam: 1 });
     const s = openBox(shiftWith([tornBox], 2, inv)).state;
-    expect(repair(s, 'foam').message).toBe('Nothing to fix with that. Supply wasted.');
+    const r = repair(s, 'foam', { kind: 'defect', id: 'torn_tape' });
+    expect(r.message).toBe('That tool does not fix that.');
+    expect(r.state).toBe(s);
+  });
+
+  it('leaves the state identical when a label or item repair is refused', () => {
+    const s = openBox(shiftWith([tornBox], 2, inventoryWith({ relabel: 1, sealant: 1 }))).state;
+    expect(repair(s, 'relabel', { kind: 'shippingLabel' }).state).toBe(s);
+    expect(repair(s, 'sealant', { kind: 'item', itemId: 1 }).state).toBe(s);
+  });
+
+  it('fixes a defect inside the open box when the inside is clicked with a supply', () => {
+    const p = makePackage({ id: 4, defects: ['missing_label'], fee: 20 });
+    let s = shiftWith([p], 2, inventoryWith({ relabel: 1 }));
+    s = inspect(s, 'look').state;
+    s = openBox(s).state;
+    const r = repair(s, 'relabel', { kind: 'package' });
+    expect(r.message).toBe('Fixed: Missing contents label.');
+    expect(r.state.handling.repaired).toEqual(['missing_label']);
+    expect(r.state.inventory.supplies.relabel).toBe(0);
+  });
+
+  it('asks for a target when none is chosen', () => {
+    const s = shiftWith([tornBox], 2, inventoryWith({ tape: 1 }));
+    const r = repair(s, 'tape', { kind: 'package' });
+    expect(r.message).toBe('Click the thing you want to fix.');
+    expect(r.state).toBe(s);
   });
 });
 
@@ -207,9 +234,9 @@ describe('closeBox', () => {
 });
 
 describe('inspect with views and notes', () => {
-  it('sends flipping to the flip button', () => {
+  it('sends rotating and flipping to their tools', () => {
     const s0 = shiftWith([clean], 3, tools('rotate'));
-    expect(inspect(s0, 'rotate').message).toBe('Use Flip box for that.');
+    expect(inspect(s0, 'rotate').message).toBe('Use the Rotate or Flip tool for that.');
   });
 
   it('only works face up and closed', () => {
